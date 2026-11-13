@@ -1,76 +1,27 @@
-// api.js — every call to our backend (/api/...) lives here, in one place.
-// Each function returns the JSON the backend sends back, or throws an Error with a friendly message.
+// api.js — every call to our backend (/api/...) goes through here. Not logged in (401) → back to the login page.
 
-// ===== THE ONE FUNCTION THAT TALKS TO THE BACKEND =====
+// ===== API CALLS =====
+// Returns { ok, status, data, message } and never throws
 async function callApi(method, url, body) {
-  const options = { method: method, headers: {} };
-  if (body !== undefined) {
-    options.headers["Content-Type"] = "application/json";
-    options.body = JSON.stringify(body);
-  }
-
-  let res;
   try {
-    res = await fetch(url, options);
+    const res = await fetch(url, {
+      method: method,
+      headers: body ? { "Content-Type": "application/json" } : {},
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (res.status === 401) {
+      window.location.href = "login.html";
+      return { ok: false, status: 401, data: {}, message: "Please log in again." };
+    }
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, status: res.status, data: data, message: apiMessage(data) };
   } catch (error) {
-    throw new Error("No internet connection. Please try again.");
+    return { ok: false, status: 0, data: {}, message: "No connection. Check your internet and try again." };
   }
-
-  if (res.status === 401) {
-    window.location.href = "login.html"; // session ended: log in again
-    throw new Error("Please log in first.");
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error(readErrorMessage(data));
-  }
-  return data;
 }
 
-// FastAPI sends errors as {detail: "text"} or {detail: [{msg: "text"}, ...]}
-function readErrorMessage(data) {
+function apiMessage(data) {
   if (typeof data.detail === "string") return data.detail;
-  if (Array.isArray(data.detail) && data.detail.length > 0) {
-    return data.detail[0].msg.replace("Value error, ", "");
-  }
-  return "Something went wrong. Please try again.";
+  if (Array.isArray(data.detail)) return "Please check the amount and other fields."; // FastAPI form errors
+  return data.message || "";
 }
-
-// ===== LOGIN =====
-function getMe() { return callApi("GET", "/api/auth/me"); }
-function logOut() { return callApi("POST", "/api/auth/logout"); }
-
-// ===== MONEY TAB =====
-function getSummary(month) { return callApi("GET", "/api/summary?month=" + month); }
-
-function getExpenses(month) { return callApi("GET", "/api/expenses?month=" + month); }
-function addExpense(expense) { return callApi("POST", "/api/expenses", expense); }
-function editExpense(id, expense) { return callApi("PUT", "/api/expenses/" + id, expense); }
-function deleteExpense(id) { return callApi("DELETE", "/api/expenses/" + id); }
-
-function getQuickAdd() { return callApi("GET", "/api/expenses/quick"); }
-function addQuickExpense(chip) {
-  return callApi("POST", "/api/expenses/quick", { note: chip.note, amount: chip.amount });
-}
-
-function setBudget(category, monthlyLimit) {
-  return callApi("PUT", "/api/budgets", { category: category, monthly_limit: monthlyLimit });
-}
-
-function getIncome(month) { return callApi("GET", "/api/income?month=" + month); }
-function addIncome(income) { return callApi("POST", "/api/income", income); }
-function editIncome(id, income) { return callApi("PUT", "/api/income/" + id, income); }
-function deleteIncome(id) { return callApi("DELETE", "/api/income/" + id); }
-
-// ===== TARGETS TAB =====
-function getSavings() { return callApi("GET", "/api/savings"); }
-function updateSavings(bankBalance, monthlyTarget) {
-  return callApi("PUT", "/api/savings", { bank_balance: bankBalance, monthly_target: monthlyTarget });
-}
-function addToSafetyNet(amount) { return callApi("POST", "/api/savings/safety-net/add-money", { amount: amount }); }
-
-function getGoals() { return callApi("GET", "/api/goals"); }
-function addGoal(goal) { return callApi("POST", "/api/goals", goal); }
-function editGoal(id, goal) { return callApi("PUT", "/api/goals/" + id, goal); }
-function deleteGoal(id) { return callApi("DELETE", "/api/goals/" + id); }
-function addMoneyToGoal(id, amount) { return callApi("POST", "/api/goals/" + id + "/add-money", { amount: amount }); }

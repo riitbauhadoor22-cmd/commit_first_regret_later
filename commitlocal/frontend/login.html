@@ -5,15 +5,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Log in</title>
-  <meta name="theme-color" content="#2F4BC0">
-  <link rel="manifest" href="manifest.json">
-  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="My Money">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -32,6 +23,8 @@
       <label>Email <input id="login-email" type="email" autocomplete="email" required></label>
       <label>Password <input id="login-password" type="password" autocomplete="current-password" required></label>
       <button class="btn" type="submit">Log in</button>
+      <!-- Shown after registering (when the Register tab is hidden) -->
+      <button id="show-register-link" class="link-btn" type="button" hidden>Don't have an account? Register</button>
     </form>
 
     <!-- ACCOUNT LOCKED -->
@@ -62,12 +55,15 @@
 
     <!-- ENTER THE EMAILED CODE -->
     <form id="code-form" hidden>
-      <p>Enter the 6-digit code we emailed you. It expires in 5 minutes.</p>
+      <p>Enter the 6-digit code we emailed you.</p>
       <label>Code
         <input id="code-input" class="code-input" inputmode="numeric" autocomplete="one-time-code"
                maxlength="6" pattern="[0-9]{6}" required>
       </label>
-      <button class="btn" type="submit">Verify</button>
+      <p id="code-timer" class="code-timer" aria-live="polite"></p>
+      <button id="verify-btn" class="btn" type="submit">Verify</button>
+      <!-- type="button" so it never submits the code form -->
+      <button id="resend-btn" class="btn btn-secondary" type="button">Resend OTP</button>
     </form>
   </main>
 

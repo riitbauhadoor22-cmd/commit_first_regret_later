@@ -5,4 +5,3 @@ __pycache__/
 *.db
 CLAUDE.md
 .claude/agents/
-.pytest_cache/

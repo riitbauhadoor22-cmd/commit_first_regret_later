@@ -3,6 +3,5 @@ uvicorn
 bcrypt
 python-dotenv
 email-validator
-python-multipart
-httpx
 pytest
+httpx

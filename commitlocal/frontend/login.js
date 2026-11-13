@@ -2,6 +2,10 @@
 
 // ===== STATE =====
 let currentEmail = ""; // remembered between the password step and the code step
+let codeExpiresAt = 0;  // when the current code expires (ms, from Date.now())
+let resendReadyAt = 0;  // when "Resend OTP" can be tapped again (ms)
+let codeTimer = null;   // the 1-second countdown interval
+const EXPIRED_TEXT = "Your code has expired. Please request a new one.";
 
 // Same rules as get_password_problems() in backend/security.py
 const PASSWORD_RULES = [
@@ -47,7 +51,8 @@ async function postJson(url, data) {
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, message: readMessage(body) };
+    return { ok: res.ok, status: res.status, message: readMessage(body),
+             expiresIn: body.expires_in, resendWait: body.resend_wait };
   } catch (error) {
     return { ok: false, status: 0, message: "No connection. Check your internet and try again." };
   }
@@ -68,6 +73,83 @@ function openTab(name) {
   byId("tab-register").setAttribute("aria-selected", !isLogin);
   showOnly(isLogin ? "login-form" : "register-form");
   showMessage("");
+}
+
+// ===== CODE COUNTDOWN + RESEND =====
+// Show the code screen and (re)start the expiry countdown and the resend cooldown
+function startCodeScreen(result) {
+  showOnly("code-form");
+  byId("code-input").value = "";
+  byId("code-input").focus();
+  codeExpiresAt = Date.now() + (result.expiresIn || 300) * 1000;
+  resendReadyAt = Date.now() + (result.resendWait || 30) * 1000;
+  clearInterval(codeTimer);
+  codeTimer = setInterval(updateCodeTimer, 1000);
+  updateCodeTimer();
+}
+
+function updateCodeTimer() {
+  const secondsLeft = Math.max(0, Math.ceil((codeExpiresAt - Date.now()) / 1000));
+  const waitLeft = Math.max(0, Math.ceil((resendReadyAt - Date.now()) / 1000));
+  const timer = byId("code-timer");
+  if (secondsLeft > 0) {
+    const secs = String(secondsLeft % 60).padStart(2, "0"); // 4:05, not 4:5
+    timer.textContent = "Code expires in " + Math.floor(secondsLeft / 60) + ":" + secs;
+    timer.classList.remove("error");
+  } else {
+    showCodeExpired();
+  }
+  const resend = byId("resend-btn");
+  resend.disabled = waitLeft > 0;
+  resend.textContent = waitLeft > 0 ? "Resend OTP (" + waitLeft + "s)" : "Resend OTP";
+}
+
+function showCodeExpired() {
+  byId("code-timer").textContent = EXPIRED_TEXT;
+  byId("code-timer").classList.add("error");
+  byId("verify-btn").disabled = true; // an expired code can't work, so only Resend is useful
+  showMessage("");
+}
+
+async function resendCode() {
+  if (Date.now() < resendReadyAt) return; // cooldown (the backend checks this too)
+  byId("resend-btn").disabled = true;
+  const result = await postJson("/api/auth/resend-code", { email: currentEmail });
+  if (!result.ok) {
+    updateCodeTimer();
+    return showMessage(result.message, true);
+  }
+  byId("verify-btn").disabled = false;
+  startCodeScreen(result);
+  showMessage(result.message, false);
+}
+
+// ===== REGISTER TAB SHOW / HIDE =====
+function setRegisterTabVisible(visible) {
+  byId("tab-register").hidden = !visible;
+  byId("show-register-link").hidden = visible;
+}
+
+// ===== SHOW / HIDE PASSWORD =====
+// Wraps every password box with a "Show" button so people can check what they typed
+function addPasswordToggles() {
+  document.querySelectorAll('input[type="password"]').forEach((input) => {
+    const wrap = document.createElement("span");
+    wrap.className = "password-wrap";
+    input.replaceWith(wrap);
+    const btn = document.createElement("button");
+    btn.type = "button"; // never submits the form
+    btn.className = "password-toggle";
+    btn.textContent = "Show";
+    btn.setAttribute("aria-label", "Show password");
+    btn.addEventListener("click", () => {
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.textContent = showing ? "Show" : "Hide";
+      btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+    });
+    wrap.append(input, btn);
+  });
 }
 
 // ===== PASSWORD STRENGTH METER =====
@@ -111,11 +193,13 @@ async function registerUser(event) {
   button.disabled = false;
   if (!result.ok) return showMessage(result.message, true);
 
-  byId("login-email").value = byId("reg-email").value;
+  byId("login-email").value = byId("reg-email").value.trim();
   byId("register-form").reset();
   updateStrengthMeter();
   openTab("login");
-  showMessage(result.message, false);
+  setRegisterTabVisible(false); // they have an account now; the link below the form brings it back
+  byId("login-password").focus();
+  showMessage("Account created, please log in.", false);
 }
 
 async function loginUser(event) {
@@ -131,8 +215,7 @@ async function loginUser(event) {
   byId("login-password").value = "";
 
   if (result.ok) {
-    showOnly("code-form");
-    byId("code-input").focus();
+    startCodeScreen(result);
     showMessage(result.message, false);
   } else if (result.status === 423) {
     showOnly("locked-box"); // 423 = account locked
@@ -147,8 +230,7 @@ async function sendLoginCode() {
   const result = await postJson("/api/auth/send-login-code", { email: currentEmail });
   byId("send-code-btn").disabled = false;
   if (!result.ok) return showMessage(result.message, true);
-  showOnly("code-form");
-  byId("code-input").focus();
+  startCodeScreen(result);
   showMessage(result.message, false);
 }
 
@@ -161,11 +243,17 @@ async function verifyCode(event) {
     code: byId("code-input").value.trim(),
   });
   button.disabled = false;
+  if (result.status === 410) {
+    codeExpiresAt = 0; // backend says expired: show the same message + Resend
+    return updateCodeTimer();
+  }
   if (!result.ok) return showMessage(result.message, true);
+  clearInterval(codeTimer);
   window.location.href = "index.html";
 }
 
 // ===== START =====
+addPasswordToggles();
 byId("tab-login").addEventListener("click", () => openTab("login"));
 byId("tab-register").addEventListener("click", () => openTab("register"));
 byId("reg-password").addEventListener("input", updateStrengthMeter);
@@ -173,6 +261,11 @@ byId("register-form").addEventListener("submit", registerUser);
 byId("login-form").addEventListener("submit", loginUser);
 byId("code-form").addEventListener("submit", verifyCode);
 byId("send-code-btn").addEventListener("click", sendLoginCode);
+byId("resend-btn").addEventListener("click", resendCode);
+byId("show-register-link").addEventListener("click", () => {
+  setRegisterTabVisible(true);
+  openTab("register");
+});
 
 // Already logged in? Go straight to the app
 fetch("/api/auth/me").then((res) => {

@@ -1,181 +1,76 @@
-// app.js — runs the app page: checks you're logged in, switches tabs, opens and closes the pop-up
-// screens, shows short messages ("toasts"), formats money and dates, and turns on offline mode.
-// (This file replaced home.js.)
+// app.js — login check, log out, tab switching, money formatting, and opening/closing pop-ups.
 
-// ===== SMALL HELPERS =====
+// ===== HELPERS =====
 function byId(id) {
   return document.getElementById(id);
 }
 
-// Makes an element with optional class and text. Using textContent keeps user text safe.
-function makeElement(tag, className, text) {
-  const element = document.createElement(tag);
-  if (className) element.className = className;
-  if (text !== undefined) element.textContent = text;
-  return element;
+// 1200 → "Rs 1,200" (Indian digit grouping)
+function formatRs(amount) {
+  return "Rs " + Number(amount).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 }
 
-// 1234.5 -> "Rs 1,234.50"   150000 -> "Rs 1,50,000"
-function formatMoney(amount) {
-  const hasPaise = Math.round(Math.abs(amount) * 100) % 100 !== 0;
-  const text = Math.abs(amount).toLocaleString("en-IN", {
-    minimumFractionDigits: hasPaise ? 2 : 0,
-    maximumFractionDigits: 2,
-  });
-  return "Rs " + text;
+// Today as YYYY-MM-DD in the phone's own time zone
+function todayString() {
+  return new Date().toLocaleDateString("en-CA");
 }
 
-// Income: "+Rs 500" (green). Expense: "−Rs 500" (orange).
-function formatIn(amount) { return "+" + formatMoney(amount); }
-function formatOut(amount) { return "−" + formatMoney(amount); }
-
-// Today's date on this phone as "YYYY-MM-DD"
-function getTodayText() {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  return now.getFullYear() + "-" + month + "-" + day;
-}
-
-function getThisMonthText() {
-  return getTodayText().slice(0, 7);
-}
-
-// "2026-11" -> "November 2026"
-function formatMonthName(monthText) {
-  const [year, month] = monthText.split("-").map(Number);
-  return new Date(year, month - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
-}
-
-// "2026-11-13" -> "13 Nov"
-function formatShortDate(dateText) {
-  const [year, month, day] = dateText.split("-").map(Number);
-  return new Date(year, month - 1, day).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
-}
-
-// "2026-11" + 1 -> "2026-12"
-function addMonths(monthText, count) {
-  const [year, month] = monthText.split("-").map(Number);
-  const date = new Date(year, month - 1 + count, 1);
-  return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
-}
-
-// ===== TOAST (short message at the bottom) =====
-let toastTimer = null;
-
-function showToast(text, isError) {
-  const toast = byId("toast");
-  toast.textContent = text;
-  toast.classList.toggle("error", Boolean(isError));
-  toast.hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { toast.hidden = true; }, 2800);
-}
-
-// Shows a problem under a form and scrolls to it, so it isn't hidden below the screen
-function showFormError(elementId, text) {
-  const element = byId(elementId);
-  element.textContent = text;
-  element.scrollIntoView({ block: "center", behavior: "smooth" });
-}
-
-// ===== POP-UP SCREENS ("sheets") =====
-function openSheet(id) {
+// ===== POP-UPS =====
+// A pop-up closes ONLY from: its X / Cancel buttons ([data-close]), closeModal() after a save,
+// or a tap on the dark overlay itself. No blur / focusout / resize handlers, so the phone
+// keyboard opening (which resizes the screen) can never close it.
+function openModal(id) {
   byId(id).hidden = false;
-  document.body.style.overflow = "hidden"; // stop the page behind from scrolling
+  document.body.classList.add("no-scroll"); // stop the page behind from scrolling
 }
 
-function closeSheet(id) {
+function closeModal(id) {
   byId(id).hidden = true;
-  if (!document.querySelector(".sheet:not([hidden])")) {
-    document.body.style.overflow = "";
-  }
+  document.body.classList.remove("no-scroll");
 }
 
-function setUpSheets() {
-  document.querySelectorAll(".sheet").forEach((sheet) => {
-    // "Cancel" / "Close" buttons
-    sheet.querySelectorAll("[data-close]").forEach((button) => {
-      button.addEventListener("click", () => closeSheet(sheet.id));
-    });
-    // Tapping the dark area outside the box closes it too
-    sheet.addEventListener("click", (event) => {
-      if (event.target === sheet) closeSheet(sheet.id);
-    });
+function setUpModal(id) {
+  const overlay = byId(id);
+  let pressStartedOnOverlay = false;
+  // Remember where the tap/press STARTED. A press that starts in an input and ends on the
+  // overlay (e.g. selecting text) must not close the pop-up.
+  overlay.addEventListener("pointerdown", (event) => {
+    pressStartedOnOverlay = event.target === overlay;
   });
-  document.addEventListener("keydown", (event) => {
-    const open = document.querySelectorAll(".sheet:not([hidden])");
-    if (event.key === "Escape" && open.length > 0) closeSheet(open[open.length - 1].id);
+  overlay.addEventListener("click", (event) => {
+    // event.target is the overlay only when the dark area itself was tapped, not anything inside the box
+    if (event.target === overlay && pressStartedOnOverlay) closeModal(id);
+  });
+  overlay.querySelectorAll("[data-close]").forEach((button) => {
+    button.addEventListener("click", () => closeModal(id));
   });
 }
 
 // ===== TABS =====
-const PAGES = ["money", "targets", "arcade"];
-
-function openPage(name) {
-  PAGES.forEach((page) => {
-    byId("page-" + page).hidden = page !== name;
+function openTab(name) {
+  ["money", "targets", "arcade"].forEach((tab) => {
+    byId("page-" + tab).hidden = tab !== name;
   });
-  document.querySelectorAll(".tabbar button").forEach((button) => {
-    const isActive = button.dataset.page === name;
-    button.classList.toggle("active", isActive);
-    if (isActive) button.setAttribute("aria-current", "page");
-    else button.removeAttribute("aria-current");
-  });
-  window.scrollTo(0, 0);
-
-  // Fresh numbers every time a tab is opened (adding money in Targets changes Money's "Saved", and so on)
-  if (name === "money") loadMoneyTab();     // in money-tab.js
-  if (name === "targets") loadTargetsTab(); // in targets-tab.js
-}
-
-function setUpTabs() {
-  document.querySelectorAll(".tabbar button").forEach((button) => {
-    button.addEventListener("click", () => openPage(button.dataset.page));
+  document.querySelectorAll(".tab-bar-btn").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === name);
   });
 }
 
 // ===== LOGIN / LOGOUT =====
-async function checkLogin() {
-  try {
-    await getMe(); // goes to login.html by itself if not logged in
-    return true;
-  } catch (error) {
-    showToast(error.message, true);
-    return false;
-  }
+async function loadUser() {
+  const result = await callApi("GET", "/api/auth/me"); // 401 → login page (in api.js)
+  if (result.ok) byId("greeting").textContent = "Hi, " + result.data.full_name + "!";
 }
 
-async function logOutAndLeave() {
-  try {
-    await logOut();
-  } finally {
-    window.location.href = "login.html";
-  }
-}
-
-// ===== OFFLINE (service worker) =====
-function registerServiceWorker() {
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("service-worker.js").catch(() => {
-      // Not on https (or not supported): the app still works, just not offline
-    });
-  }
+async function logout() {
+  await callApi("POST", "/api/auth/logout");
+  window.location.href = "login.html";
 }
 
 // ===== START =====
-async function startApp() {
-  setUpTabs();
-  setUpSheets();
-  document.querySelectorAll(".logout-btn").forEach((button) => {
-    button.addEventListener("click", logOutAndLeave);
-  });
-  registerServiceWorker();
-  if (await checkLogin()) {
-    startMoneyTab();   // in money-tab.js
-    startTargetsTab(); // in targets-tab.js
-  }
-}
-
-// Runs once every script on the page has loaded
-document.addEventListener("DOMContentLoaded", startApp);
+document.querySelectorAll("[data-logout]").forEach((b) => b.addEventListener("click", logout));
+document.querySelectorAll(".tab-bar-btn").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab)));
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") document.querySelectorAll(".overlay").forEach((o) => closeModal(o.id));
+});
+loadUser();
