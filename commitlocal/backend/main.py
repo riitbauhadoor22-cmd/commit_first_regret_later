@@ -9,15 +9,19 @@ from errors import add_error_handlers
 from routes.auth import router as auth_router
 from routes.budgets import router as budgets_router
 from routes.expenses import router as expenses_router
+from routes.game import router as game_router
 from routes.goals import router as goals_router
 from routes.income import router as income_router
+from routes.inflation import router as inflation_router
 from routes.loans import router as loans_router
 from routes.savings import router as savings_router
 from routes.summary import router as summary_router
+from services.inflation import load_cpi
 
 app = FastAPI(title="Finance PWA")
 add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
+load_cpi()  # read the Statistics Mauritius CPI file once (missing file → "Inflation data unavailable")
 app.include_router(auth_router)
 app.include_router(summary_router)
 app.include_router(income_router)
@@ -26,6 +30,8 @@ app.include_router(budgets_router)
 app.include_router(savings_router)
 app.include_router(goals_router)
 app.include_router(loans_router)
+app.include_router(inflation_router)
+app.include_router(game_router)  # Arcade: Budget Challenge
 
 
 # Tell browsers to re-check frontend files every time (a quick 304 if unchanged).

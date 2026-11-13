@@ -3,7 +3,7 @@
 // API calls (/api/...) are never saved here: money data always comes fresh from the server.
 // Other websites (e.g. the Chart.js CDN) are not cached either: offline, the Loans graphs are simply hidden.
 
-const CACHE_NAME = "my-money-v11"; // change the number when you want every phone to start fresh
+const CACHE_NAME = "my-money-v15"; // change the number when you want every phone to start fresh
 const APP_FILES = [
   "index.html",
   "login.html",
@@ -19,6 +19,8 @@ const APP_FILES = [
   "targets-tab.js",
   "loan-calc.js",
   "loans-tab.js",
+  "game-calc.js",
+  "arcade-tab.js",
   "login.js",
   "manifest.json",
   "icons/icon-192.png",

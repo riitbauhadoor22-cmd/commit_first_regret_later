@@ -17,7 +17,7 @@ It is a **Progressive Web App (PWA)**. It opens in any phone browser (Chrome, Sa
 
 The app has **4 tabs** in a bottom tab bar: **Money**, **Targets**, **Loans**, **Arcade**.
 
-**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and Targets tab (bank balance, monthly saving, safety net, goals) restored from the earlier version, plus the Loans tab. 📝 Arcade and voice are **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
+**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and Targets tab (bank balance, monthly saving, safety net, goals) restored from the earlier version, plus the Loans tab. ✅ Arcade has the **Budget Challenge** game. 📝 Voice is **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
 
 ---
 
@@ -42,6 +42,8 @@ commitlocal/
 │   ├── money-tab.js            ← ✅ month switcher, summary card + 50·30·20 bar, Money in/out views, quick-add chips, category budgets, fixed bills, recent, Add expense/income/budget sheets, category pop-up (tap a category row)
 │   ├── budget-calc.js          ← ✅ spent-vs-budget maths (left / over / bar %, colour level); window.BudgetCalc + Node module.exports; loaded before money-tab.js
 │   ├── loan-calc.js            ← ✅ loan maths only (amortisation, extra payments, affordability, repaymentFor = EMI for an amount); window.LoanCalc + Node module.exports
+│   ├── game-calc.js            ← ✅ Budget Challenge live totals / split % / bar widths (pure, Node-tested; display only)
+│   ├── arcade-tab.js           ← ✅ Arcade tab: Budget Challenge game (levels, fields, event, result, previous results)
 │   ├── loans-tab.js            ← ✅ Loans tab: forms, results, Chart.js graphs (CDN chart.js@4.4.1, hidden offline); section 2 calls /api/loans/predict
 │   ├── targets-tab.js          ← ✅ draws the Targets tab; New goal form; Add money; edit bank balance / monthly target
 │   ├── voice.js                ← 🆕 microphone → text (Web Speech API, or record audio for /api/speech-to-text)
@@ -57,11 +59,13 @@ commitlocal/
     ├── database.py             ← ✅ SQLAlchemy connection from DATABASE_URL (SQLite or PostgreSQL), open_db(), runs Alembic, user-filtered query helpers
     ├── models.py               ← ✅ incoming forms (Pydantic) + the database tables (SQLAlchemy ORM, see section 6)
     ├── migrate_old_db.py       ← ✅ ONE-TIME: copies users + data from the old finance.db into the new tables
-    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py)
+    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py)
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
     ├── categories.py           ← ✅ CATEGORIES (+ default need/want) · 🆕 the other fixed lists: categories (+ default Need/Want), income types, frequencies
+    ├── game/                   ← ✅ Budget Challenge logic (no UI, no routes): scenarios.py = config (levels, categories, min_amount, locked, events, points — edit here),
+    │                             events.py (pick + effect), budget_engine.py (checks, totals in cents, over-income block), scoring.py (score + feedback)
     ├── money.py                ← 🆕 ALL the maths, as plain functions with no database (easy to test) — see section 3
     ├── expense_parser.py       ← 🆕 "I spent 245 on lunch" → {amount: 245, category: "Food & drinks", note: "lunch"}
     ├── routes/
@@ -71,23 +75,30 @@ commitlocal/
     │   ├── expenses.py         ← ✅ /api/expenses: list, add · 🆕 edit, delete; quick-add chips
     │   ├── budgets.py          ← ✅ /api/budgets: per-category monthly limits (list / set / remove)
     │   ├── savings.py          ← 🆕 /api/savings: bank balance, monthly target, safety net (+ add money to it)
-    │   ├── goals.py            ← 🆕 /api/goals: list (with status), add, edit, delete, add money
-    │   ├── loans.py            ← ✅ /api/loans/predict: AI max-loan estimate (model loaded once at start) + 40% rule
+    │   ├── goals.py            ← 🆕 /api/goals: list (with status), add, edit, delete, add money, GET /{id}/inflation-projection
+    │   ├── inflation.py        ← ✅ GET /api/inflation/projection (live preview for the goal form)
+    │   ├── loans.py            ← ✅ /api/loans/predict: real-data risk model (loaded once at start) searched in Rs 5,000 steps + 40% rule; final = lower of the two
     │   └── voice.py            ← 🆕 /api/voice/parse-expense and /api/speech-to-text (calls OpenAI)
-    ├── AI_model/loan_amount_model.pkl ← ✅ trained RandomForestRegressor (joblib, scikit-learn 1.9.1, 58 MB, git-ignored)
-    ├── train_loan_model.py     ← training script (reference only; not run by the app)
-    ├── DATA/synthetic_loan_data.csv ← training data (8,000 rows)
+    ├── AI_model/loan_risk_model.pkl + loan_risk_model_card.json ← ✅ HistGradientBoostingClassifier on real Lending Club outcomes + its facts (rows, dates, AUC, base default rate, bands); git-ignored
+    ├── AI_model/loan_amount_model.pkl ← ❌ old synthetic RandomForest, NOT used (kept on disk)
+    ├── train_loan_risk_model.py ← trains the risk model: `--input loan.csv --out-dir AI_model` (chunked pandas read, filters + logs removed rows)
+    ├── DATA/lending_club/loan.csv ← Kaggle "All Lending Club loan data" (1.2 GB, git-ignored)
+    ├── train_loan_model.py     ← ❌ old synthetic training script, NOT used
+    ├── DATA/synthetic_loan_data.csv ← ❌ old synthetic data, NOT used
     ├── requirements.txt        ← ✅→🆕 adds: pytest, httpx (tests + calling OpenAI), python-multipart (audio upload), sqlalchemy, alembic, psycopg[binary] (PostgreSQL), scikit-learn==1.9.1 + pandas + joblib (loan model)
     ├── .env.example            ← names of the keys, with no real values (safe to commit)
     ├── .env                    ← YOUR real keys (never committed, never sent to the browser)
     ├── app.db                  ← the SQLite database file in development (created automatically, not committed)
     └── finance.db              ← the OLD database (only read by migrate_old_db.py)
 
-tests/backend/test_loans.py ← ✅ /api/loans/predict: numbers, validation, formula fallback, login
+tests/backend/test_loans.py ← ✅ /api/loans/predict: rule, AI search with fake models, fallbacks, real-model sanity (skipped if not trained), training script on tests/fixtures/lending_club_sample.csv (FAKE TEST DATA)
 tests/backend/test_error_codes.py ← ✅ every error reply has a "code" (422 field codes, AppError codes + params), "detail" kept
+tests/backend/test_game.py ← ✅ Budget Challenge: exact income, unallocated, over income rejected, no savings, needs>50%, wants>30%, essentials, cost/discount/bonus events, L3 reaches 100, locked values, XP once + replay, +20 once, per user, 401, money tables untouched, decimals
+tests/frontend/game-calc.test.js ← ✅ game-calc.js (cents, never NaN, UTC→local dates) + every game/scenarios.py id / criterion / tip has a text
 tests/frontend/loan-calc.test.js ← ✅ Node built-in tests for loan-calc.js (run: node --test tests/frontend)
 tests/frontend/i18n.test.js     ← ✅ same keys + no empty values in en/fr/mfe, t() fallback, every data-i18n / t("…") / backend error code has a translation
 tests/frontend/budget-calc.test.js ← ✅ no budget, under / at / over, colour thresholds 79/80/100/101%
+tests/backend/test_inflation.py ← ✅ CPI builder (temp files), 12-month rate, projection + edge cases, endpoints (uses tests/fixtures/cpi_sample.csv = FAKE data)
 tests/backend/                  ← pytest + FastAPI TestClient (temporary database, fake email — never sends real emails)
     ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender, logged-in clients
     ├── test_otp.py             ← ✅ valid / expired / wrong code, hashes only, lowercase email, locked-account unlock
@@ -137,7 +148,12 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 
 ### Tab 4: Loans ✅ (section 1 client-side; section 2 uses POST /api/loans/predict)
 - **My current loan:** amount left, rate (% a year), monthly repayment, optional extra per month + start date → months/years to repay, payoff date (from the start date, or today if empty/past), total interest, total paid. Month-by-month amortisation (monthly compounding). Payment ≤ first month's interest → warning; > 100 years → warning. Graphs: balance line (+ "with extra" line), donut loan vs interest.
-- **Can I afford a loan? (How much can I borrow?):** income, expenses (both pre-filled from this month's /api/summary when the Loans tab opens), existing repayments (pre-filled from section 1), credit score (406–850), age (18–100), rate, term (1–30 yrs) → POST `/api/loans/predict`. Backend: model features in order `monthly_income, monthly_expenses, existing_debt_payment, credit_score, age, debt_to_income_ratio`, where the model's ratio = (expenses + existing debt) ÷ income as a fraction, rounded to 3 dp (that's how the training CSV defines it). The *displayed* debt-to-income = existing repayments ÷ income (fraction) → verdict: <30% "Good to borrow", 30–40% "Borrow carefully", >40% "Not recommended right now". Standard rule: payment = 40% income − existing repayments (min 0) → present value at the sent rate/term (default 10%, 5 yrs); ignores expenses and credit score. Prediction clamped ≥ 0. Model missing/broken → logged error, `source: "formula"` and predicted = rule amount. Frontend shows the AI estimate, DTI bar (green/amber/red), verdict, rule comparison, EMI for the AI amount (`repaymentFor`), graph of rule max loan for 1–25 yrs vs a flat AI-estimate line.
+- **Can I afford a loan? (How much can I borrow?):** income, expenses (pre-filled from this month's /api/summary), existing repayments (pre-filled from section 1), rate, term (1–30 yrs), optional "Missed a loan or bill payment in the last 12 months?" (No/Yes) → POST `/api/loans/predict`. Expenses are not used by the model or the rule (LC's dti excludes living costs).
+  - **Risk model** (`train_loan_risk_model.py`, real data only): Lending Club loans issued 2007-06…2015-12 with a final outcome — Fully Paid = 0, Charged Off / Default = 1 ("Does not meet the credit policy. Status:X" kept with outcome X); Current/Late/Grace dropped. Features (ratios only, no FICO/grade/zip/demographics), in order: `payment_to_income` (installment ÷ monthly income), `dti` (LC dti ÷ 100 = existing debt excl. this loan), `loan_to_income` (loan ÷ annual income), `int_rate` (%), `term_months` (36/60), `missed_payment` (delinq_2yrs > 0). Monotonic constraints: more burden never lowers risk. 80/20 stratified split, random_state 42. Card: 825,536 rows, test ROC-AUC 0.705, base default rate 18.5%.
+  - **Search** (`routes/loans.py`): amounts Rs 0, 5,000, … up to min(Rs 1 crore, 5 × yearly income); installment by amortisation at the user's rate/term; term clipped to 36–60 months for the model. AI estimate = largest amount (from 0 upward, stopping at the first failure) whose risk ≤ base default rate (from the card) AND whose installment ≤ 30% of income (`MAX_PAYMENT_TO_INCOME`; real data has almost no loans above that). Final `predicted_max_loan` = min(AI, 40% rule), `limited_by` "ai"/"rule". Risk shown for the final amount (Rs 5,000 if 0): low < 0.8 × base, medium ≤ 1.2 × base, high above.
+  - **40% rule:** payment = 40% income − existing repayments (min 0) → present value at the rate/term. Displayed DTI = existing repayments ÷ income → verdict <30% "Good to borrow", 30–40% "Borrow carefully", >40% "Not recommended right now".
+  - **Fallback:** model or card missing/broken → logged error, `source: "formula"`, answer = rule amount, AI fields null.
+  - **UI:** final answer, which limit applied, "AI estimate: about Rs X (risk model trained on N real loan outcomes)", risk Low/Medium/High, DTI bar, verdict, rule line, EMI for the final amount, graph rule-max per term vs flat AI line, "How is this calculated?" (N and years from the card via the API), "Estimate only – not financial advice. Your bank makes the final decision."
 - Money shown as "Rs 12,345" (whole rupees); empty / negative / text inputs → friendly message. Tests: `node --test tests/frontend`.
 
 ### Languages (`i18n.js`, `lang/*.json`, `backend/errors.py`) ✅
@@ -187,6 +203,14 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 14. **Bank bar** (Targets dark card) = bank_balance split into: safety net, one segment per goal (its saved amount), and the rest ("free").
 15. **Quick add chips** = everyday expenses from the last 30 days, grouped by (note, amount), the 4 most frequent (ties → most recent). One tap → `POST /api/expenses/quick` saves the same expense again with today's date and `source = "quick"`.
 
+### Inflation estimate for goals (Statistics Mauritius CPI) ✅
+- Data: `data/cpi_mauritius.csv` (month, category, index_value, base_year, source_file; base 2023 = 100), built from the transcribed official releases in `data/cpi_raw/` (never edit) by `python scripts/build_cpi_csv.py`. 2025-09 → 2026-10, 14 categories.
+- `backend/services/inflation.py` loads it once at startup (`load_cpi()` in main.py; path from the project root). Missing file → `{"available": false, "reason": "DATA_UNAVAILABLE"}`.
+- Rate r = index[latest] / index[latest − 12 months] − 1 (3-year average only if 37+ months; not the case now). Months = whole months to the deadline. projected_cost = target × (1 + r)^(months/12), rounded to the rupee; monthly saving original/adjusted = (target or projected − saved) ÷ months.
+- Goal category → CPI category: `GOAL_CPI_CATEGORIES` in `categories.py` (edit there). No/unknown category or < 13 months → "All Items" (+ FALLBACK_ALL_ITEMS warning).
+- Edge cases: deadline passed / < 1 month → `available: false` (DEADLINE_PASSED / DEADLINE_TOO_SOON); > 5 years → LONG_HORIZON warning; falling prices handled normally; fully funded → FUNDED_BUT_SHORT if the projection is above what's saved.
+- Frontend (`targets-tab.js`): each goal card fetches its estimate; the goal form has a "What is it for?" select and a live preview (400 ms after typing). Texts: `inflation.*`, `goalCat.*`, `cpi.*` keys. Always labelled "Estimate only" with source and data month.
+
 ### Voice → expense 🆕
 1. User taps the mic (on the Everyday spending card, or "Say it" on Add expense).
 2. `voice.js` uses the browser's **Web Speech API** to get the words. If the browser doesn't have it (often iPhone / Samsung Internet), it **records a short clip** (`MediaRecorder`) and sends it to `POST /api/speech-to-text` → Python sends it to OpenAI → text comes back.
@@ -235,7 +259,11 @@ A small **Log out** button sits at the top right of each tab.
 ### Tab 3: Loans — see "Tab 4: Loans" in Section 3.
 
 ### Tab 4: Arcade
-"Coming soon" card ("Challenges and mini-games to help you hit your goals will live here.") + 4 dashed boxes [Game 1]–[Game 4].
+**Budget Challenge** card first (Game 1), then Play / Result / Previous results cards, then the old "Coming soon" card + dashed boxes [Game 2]–[Game 4].
+- **Config** (`backend/game/scenarios.py`, GET `/api/game/levels`; amounts fictional, said in the UI): L1 "Student Life" Rs 15,000 (Food and groceries, Transport, Phone and internet, Study materials, Entertainment, Personal expenses, Savings; nothing locked) · L2 "First Job" Rs 30,000 (Rent or household contribution, Groceries, Transport, Utilities, Phone and internet, Entertainment, Shopping, Savings, Loan repayment 🔒 Rs 2,500) · L3 "Independent Living" Rs 45,000 (Rent 🔒 Rs 12,000, Groceries, Electricity and water, Transport, Phone and internet, Healthcare, Entertainment, Personal expenses, Savings, Loan repayment 🔒 Rs 3,000). Groups: Needs 50% · Wants 30% · **Savings & debt** 20% (loan repayments are here). Essentials have `min_amount`. 4 events per level: `cost` (raises a category's minimum), `discount` (lowers it), `bonus` (adds income); e.g. bus fare +500/700, grocery discount 300/500/600, charger 400, utilities +600/900, doctor 1,200, bonus 1,000/1,500/2,000. Texts: `game.cat.<id>`, `game.event.<id>`, `game.levelTitle.<n>`, `game.levelStory.<n>`, `game.group.*`, `game.crit.*`, `game.tip.*`.
+- **Flow:** pick level (events toggle for every level, default on) → POST `/api/game/attempts` (server makes `attempt_id`, picks the event, keeps it secret) → fill amounts (🔒 fields disabled, "Suggested at least Rs X", live Allocated / Remaining, per-group % + Rs bar; over income → red warning and Submit disabled, server also answers 400 `GAME_OVER_INCOME`; unallocated money is allowed) → submit (`final:false`) → event + its effect shown, hints/income updated → adjust once → `final:true` → result: income, allocated, remaining, group bars vs 50·30·20, breakdown, feedback, XP; Play again / Choose another level / Previous results (dates shown in the phone's local time). Events off → straight to final.
+- **Score (server, `game/scoring.py`, cents):** budget balance 30 (within income: ≤10% unallocated = 30, ≤25% = 20, more = 10) · essential coverage 25 (share of essentials ≥ min; a discount lowers the min) · allocation 20 (distance to 50·30·20; if the scenario's need minimums exceed 50%, the Needs target rises and Wants shrinks; Needs above target count half; ≤10 → 20, ≥50 → 0) · savings 15 (Savings category up to 10% of income, nothing extra above; max 5 if an essential is short) · events 10 (within income and the event-raised minimums met; events off → automatic 10; a missed cost event only loses these 10). Feedback codes explain each part (balanced, essential_short, high_needs_ok, large_wants, unassigned, …).
+- **XP:** score + 20 the first time a level is completed. Given once per attempt (`UPDATE … WHERE xp_awarded = false`); repeat submits return the saved result with `xp_awarded: 0`. Only `game_attempts` is written — never income/expenses/budgets.
 
 ---
 
@@ -298,7 +326,8 @@ profiles  otp_codes   sessions    income    expenses   budgets  savings_settings
 | `expenses` | id, user_id, amount_cents, category, kind, description, date, is_fixed, source, created_at | `description` = API field `note`; `source` = typed/voice/quick; `is_fixed` = repeats monthly |
 | `budgets` | id, user_id, category, amount_cents, period ("monthly"), start_date | one per user per category (API field `monthly_limit`) |
 | `savings_settings` | id, user_id (unique), bank_balance_cents, monthly_target_cents (empty = 20% of regular income), safety_net_saved_cents | made the first time it's needed |
-| `savings_goals` | id, user_id, name, target_cents, saved_cents, deadline, priority, created_at | API fields `target_amount`, `saved_amount` |
+| `savings_goals` | id, user_id, name, target_cents, saved_cents, deadline, priority, category (optional, e.g. "Phone"), created_at | API fields `target_amount`, `saved_amount` |
+| `game_attempts` | id (= attempt_id), user_id, level, events_on, event, stage (start/event/done), allocation (JSON cents), score 0–100, xp, xp_awarded, created_at, completed_at | Arcade Budget Challenge (migration 0004) |
 | `deposits` | id, user_id, goal_id (empty = safety net), amount_cents, date, created_at | deleting a goal deletes its deposits |
 
 `created_at` is used to keep "newest first" order (UUIDs have no order). The old `overall_budget` table is gone (not used by the current routes).
@@ -350,8 +379,14 @@ All money routes need you to be logged in (401 otherwise).
 | POST `/api/goals` 🆕 | add a goal |
 | PUT / DELETE `/api/goals/{id}` 🆕 | edit / delete a goal |
 | POST `/api/goals/{id}/add-money` 🆕 | add money to a goal |
+| GET `/api/goals/{id}/inflation-projection` ✅ | inflation estimate for one goal (see "Inflation estimate") |
+| GET `/api/inflation/projection?target&current&deadline&category` ✅ | same estimate for the goal form preview (nothing saved) |
 | POST `/api/voice/parse-expense` 🆕 | text → suggested `{amount, category, kind, note}` (not saved) |
-| POST `/api/loans/predict` ✅ | `{monthly_income, monthly_expenses, existing_debt_payment, credit_score, age, interest_rate?, years?}` → `{predicted_max_loan, formula_max_loan, formula_monthly_payment, debt_to_income_ratio, verdict, source}` |
+| POST `/api/loans/predict` ✅ | `{monthly_income, monthly_expenses?, existing_debt_payment?, interest_rate?, years?, missed_payment?}` → `{predicted_max_loan, ai_max_loan, limited_by, predicted_risk, risk_level, base_default_rate, model_info{rows,date_from,date_to,dataset}, max_payment_to_income, formula_max_loan, formula_monthly_payment, debt_to_income_ratio, verdict, source}` |
+| GET `/api/game/levels` ✅ | Budget Challenge config (levels, points, XP bonus) |
+| POST `/api/game/attempts` ✅ | `{level, events_on}` → `{attempt_id, level, events_on, has_event}` (event chosen + stored, not shown yet) |
+| POST `/api/game/attempts/{attempt_id}/submit` ✅ | `{allocation: {category: rupees}, final}` → score, breakdown, percents, tips, event (after 1st submit), `xp_awarded` (0 if already given), `first_completion_bonus`. Unknown category / changed locked value / over income → 400 |
+| GET `/api/game/attempts` ✅ | completed games (newest 30), `total_xp`, `best_scores` per level |
 | POST `/api/speech-to-text` 🆕 | audio clip → text (backup for phones without Web Speech) |
 
 ---
@@ -364,7 +399,7 @@ Each step is checked before the next one starts. After each step: what was built
 2. **Tab bar + Money out view + Add expense** (+ manifest, service worker, icons).
 3. **Money in view + Add income.**
 4. **Targets tab.**
-5. **Arcade tab.**
+5. **Arcade tab.** ✅ Budget Challenge
 6. **Voice input** (`voice.js`, `expense_parser.py`, `/api/voice/parse-expense`, `/api/speech-to-text`).
 
 ---

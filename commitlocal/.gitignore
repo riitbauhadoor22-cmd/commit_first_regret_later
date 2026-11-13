@@ -5,7 +5,14 @@ __pycache__/
 *.db
 CLAUDE.md
 .claude/agents/
-# 58 MB trained loan model: too big for git, share it separately
-backend/AI_model/
+# Old 58 MB synthetic loan model (no longer used): too big for git
+backend/AI_model/loan_amount_model.pkl
+
+backend/DATA/lending_club/
 
 *.db-journal
+# 1.2 GB Lending Club dataset: too big for git, download from Kaggle
+backend/DATA/lending_club/
+# Big downloads and AI prompt notes - keep out of git
+*.zip
+*_prompt.md

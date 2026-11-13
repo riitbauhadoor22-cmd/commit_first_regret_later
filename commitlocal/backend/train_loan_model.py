@@ -1,3 +1,5 @@
+# NOT USED ANYMORE: the app now uses train_loan_risk_model.py (real Lending Club data). This script, its
+# synthetic data (DATA/synthetic_loan_data.csv) and AI_model/loan_amount_model.pkl are kept on disk only for reference.
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor

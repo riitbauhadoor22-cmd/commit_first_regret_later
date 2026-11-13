@@ -1,0 +1,34 @@
+# Source: Statistics Mauritius - Consumer Price Index, monthly release
+# URL: https://statsmauritius.govmu.org/Documents/Statistics/Monthly/CPI/2026/CPI_M_Aug26_070926.pdf
+# Release date: 2026-09-07
+# Base: January - December 2023 = 100
+# Transcribed from the 'Sub-indices by division' table of the PDF.
+month,division,index_value,base
+2026-07,Food and non-alcoholic beverages,114.0,2023=100
+2026-08,Food and non-alcoholic beverages,114.2,2023=100
+2026-07,Alcoholic beverages and tobacco,119.4,2023=100
+2026-08,Alcoholic beverages and tobacco,119.7,2023=100
+2026-07,Clothing and footwear,108.6,2023=100
+2026-08,Clothing and footwear,108.6,2023=100
+2026-07,"Housing, water, electricity, gas and other fuels",109.9,2023=100
+2026-08,"Housing, water, electricity, gas and other fuels",109.9,2023=100
+2026-07,"Furnishings, household equipment and routine household maintenance",113.9,2023=100
+2026-08,"Furnishings, household equipment and routine household maintenance",114.6,2023=100
+2026-07,Health,119.4,2023=100
+2026-08,Health,119.4,2023=100
+2026-07,Transport,107.2,2023=100
+2026-08,Transport,109.2,2023=100
+2026-07,Information and Communication,99.1,2023=100
+2026-08,Information and Communication,99.1,2023=100
+2026-07,"Recreation, sports and culture",109.8,2023=100
+2026-08,"Recreation, sports and culture",110.2,2023=100
+2026-07,Education services,116.8,2023=100
+2026-08,Education services,116.8,2023=100
+2026-07,Restaurants and accommodation services,127.3,2023=100
+2026-08,Restaurants and accommodation services,127.4,2023=100
+2026-07,Insurance and financial services,119.3,2023=100
+2026-08,Insurance and financial services,119.3,2023=100
+2026-07,"Personal care, social protection and miscellaneous goods and services",111.8,2023=100
+2026-08,"Personal care, social protection and miscellaneous goods and services",112.7,2023=100
+2026-07,All Divisions,112.9,2023=100
+2026-08,All Divisions,113.4,2023=100

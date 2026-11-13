@@ -208,10 +208,11 @@
         <label><span data-i18n="loan.label.income">Monthly take-home income (Rs)</span> <input id="afford-income" type="number" inputmode="decimal" min="0" step="any"></label>
         <label><span data-i18n="loan.label.expenses">Monthly expenses (Rs)</span> <input id="afford-expenses" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
         <label><span data-i18n="loan.label.existing">Existing loan repayments per month (Rs)</span> <input id="afford-existing" type="number" inputmode="decimal" min="0" step="any" placeholder="0"></label>
-        <label><span data-i18n="loan.label.credit">Credit score (406–850)</span> <input id="afford-credit" type="number" inputmode="numeric" min="406" max="850" step="1"></label>
-        <label><span data-i18n="loan.label.age">Age</span> <input id="afford-age" type="number" inputmode="numeric" min="18" max="100" step="1"></label>
         <label><span data-i18n="loan.label.rate">Interest rate (% a year)</span> <input id="afford-rate" type="number" inputmode="decimal" min="0" step="any"></label>
         <label><span data-i18n="loan.label.years">Loan term (years)</span> <input id="afford-years" type="number" inputmode="numeric" min="1" max="30" step="1"></label>
+        <!-- risk model input (optional): missed a loan/bill payment in the last 12 months? -->
+        <label><span data-i18n="loan.label.missed">Missed a loan or bill payment in the last 12 months?</span>
+          <select id="afford-missed"><option value="no" data-i18n="loan.missed.no">No</option><option value="yes" data-i18n="loan.missed.yes">Yes</option></select></label>
         <p id="afford-msg" class="message error" role="alert"></p>
         <button class="btn" type="submit" data-i18n="loan.predict.button">Check how much I can borrow</button>
       </form>
@@ -219,6 +220,9 @@
         <p id="afford-warning" class="warning" hidden></p>
         <div id="afford-numbers">
           <p id="afford-ai" class="afford-ai"></p>
+          <p id="afford-limit" class="muted small"></p>
+          <p id="afford-ai-est" class="muted small"></p>
+          <p id="afford-risk" class="muted small"></p>
           <p class="muted small"><span data-i18n="loan.dti">Debt-to-income (existing repayments ÷ income):</span> <strong id="afford-dti-text"></strong></p>
           <div id="afford-dti-bar" class="bar" role="progressbar" aria-label="Debt-to-income" data-i18n-aria="loan.dtiShort"><span></span></div>
           <p id="afford-verdict" class="afford-verdict"></p>
@@ -231,7 +235,13 @@
           </dl>
           <div class="chart-box chart-small"><canvas id="afford-chart" aria-label="Max loan for each term" data-i18n-aria="loan.chart.affordAria"></canvas></div>
           <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
-          <p class="muted small" data-i18n="loan.aiNote">AI estimate based on sample data – not financial advice. Check with your bank.</p>
+          <!-- "How is this calculated?": numbers come from the model card via the API -->
+          <details class="how-calc">
+            <summary data-i18n="loan.how.title">How is this calculated?</summary>
+            <p id="afford-how-model" class="muted small"></p>
+            <p id="afford-how-search" class="muted small"></p>
+          </details>
+          <p class="muted small" data-i18n="loan.aiNote">Estimate only – not financial advice. Your bank makes the final decision.</p>
         </div>
       </div>
     </section>
@@ -239,12 +249,67 @@
     <p class="muted small disclaimer" data-i18n="loan.disclaimer">Estimates only – not financial advice. Check with your bank.</p>
   </main>
 
-  <!-- ===================== TAB 4: ARCADE (empty for now) ===================== -->
+  <!-- ===================== TAB 4: ARCADE (Budget Challenge + coming soon) ===================== -->
   <main id="page-arcade" class="page" hidden>
     <header class="page-head">
       <h1 data-i18n="nav.arcade">Arcade</h1>
       <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
     </header>
+
+    <!-- Budget Challenge (arcade-tab.js): pick a level -> allocate -> surprise event -> adjust once -> score + XP -->
+    <section id="game-card" class="card dark">
+      <p class="label" data-i18n="game.label">Game 1</p>
+      <h2 class="arcade-title" data-i18n="game.title">Budget Challenge</h2>
+      <p class="arcade-text" data-i18n="game.subtitle">Learn to budget with fictional scenarios</p>
+      <p class="muted" data-i18n="game.fictional">All people and amounts are made up: nothing touches your real money.</p>
+      <p id="game-xp" class="game-xp"></p>
+      <div id="game-levels" class="game-levels"></div>
+      <label class="check"><input id="game-events" type="checkbox" checked> <span data-i18n="game.eventsToggle">Surprise events</span></label>
+    </section>
+
+    <section id="game-play" class="card stack" hidden>
+      <div class="card-head">
+        <h2 id="game-level-title"></h2>
+        <button id="game-quit" class="link-btn" type="button" data-i18n="game.quit">Quit</button>
+      </div>
+      <p id="game-story" class="muted"></p>
+      <p id="game-income" class="game-income"></p>
+      <div id="game-event" class="game-event" role="status" hidden></div>
+      <form id="game-form" class="stack" novalidate>
+        <div id="game-fields" class="stack"></div>
+        <div class="split-bar" aria-hidden="true">
+          <span id="game-split-needs" class="split-needs"></span>
+          <span id="game-split-wants" class="split-wants"></span>
+          <span id="game-split-savings" class="split-savings"></span>
+        </div>
+        <p id="game-split-legend" class="split-legend"></p>
+        <p id="game-allocated" class="game-allocated"></p>
+        <p id="game-left" class="game-left"></p>
+        <p id="game-error" class="message error" role="alert"></p>
+        <button id="game-submit" class="btn" type="submit" data-i18n="game.submit">Submit my budget</button>
+      </form>
+    </section>
+
+    <section id="game-result" class="card stack" hidden>
+      <p class="small-title" data-i18n="game.yourScore">Your score</p>
+      <p id="game-score" class="big-number">0 / 100</p>
+      <p id="game-xp-won" class="game-xp-won"></p>
+      <ul id="game-summary" class="game-summary"></ul>
+      <ul id="game-breakdown" class="game-breakdown"></ul>
+      <p class="small-title" data-i18n="game.splitTitle">Your split vs 50 · 30 · 20</p>
+      <div id="game-result-bar" class="split-bar" aria-hidden="true"></div>
+      <div id="game-goal-bar" class="split-bar" aria-hidden="true"></div>
+      <p id="game-result-legend" class="split-legend"></p>
+      <p class="small-title" data-i18n="game.tipsTitle">Tips</p>
+      <ul id="game-tips" class="game-tips"></ul>
+      <button id="game-again" class="btn" type="button" data-i18n="game.again">Play again</button>
+      <button id="game-back" class="btn btn-light" type="button" data-i18n="game.back">Choose another level</button>
+    </section>
+
+    <section class="card stack">
+      <h2 data-i18n="game.previous">Previous results</h2>
+      <ul id="game-history" class="item-list"></ul>
+    </section>
 
     <section class="card dark">
       <p class="label" data-i18n="arcade.soon">Coming soon</p>
@@ -253,7 +318,6 @@
     </section>
 
     <div class="game-grid">
-      <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":1}'>Game 1</div>
       <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":2}'>Game 2</div>
       <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":3}'>Game 3</div>
       <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":4}'>Game 4</div>
@@ -431,6 +495,9 @@
           </span>
         </label>
         <label><span data-i18n="goal.deadline">Deadline</span> <input id="goal-deadline" type="date" required></label>
+        <label><span data-i18n="goal.category">What is it for?</span> <select id="goal-category"></select></label>
+        <!-- Live inflation estimate (filled by targets-tab.js when target, deadline and category are set) -->
+        <div id="goal-inflation-preview" class="inflation-box" aria-live="polite" hidden></div>
         <fieldset>
           <legend data-i18n="goal.priority">Priority</legend>
           <div class="toggle three">
@@ -570,5 +637,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="loan-calc.js"></script>
   <script src="loans-tab.js"></script>
+  <script src="game-calc.js"></script>
+  <script src="arcade-tab.js"></script>
 </body>
 </html>

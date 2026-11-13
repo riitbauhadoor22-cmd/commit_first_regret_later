@@ -1,0 +1,31 @@
+# FAKE TEST DATA - made-up numbers for pytest only. Never used by the app. Real data: data/cpi_mauritius.csv
+month,category,index_value,base_year,source_file
+2024-10,All Items,100.0000,2023,fake_sample.csv
+2024-10,Information and communication,100.0000,2023,fake_sample.csv
+2024-11,All Items,100.8333,2023,fake_sample.csv
+2024-11,Information and communication,99.5833,2023,fake_sample.csv
+2024-12,All Items,101.6667,2023,fake_sample.csv
+2024-12,Information and communication,99.1667,2023,fake_sample.csv
+2025-01,All Items,102.5000,2023,fake_sample.csv
+2025-01,Information and communication,98.7500,2023,fake_sample.csv
+2025-02,All Items,103.3333,2023,fake_sample.csv
+2025-02,Information and communication,98.3333,2023,fake_sample.csv
+2025-03,All Items,104.1667,2023,fake_sample.csv
+2025-03,Information and communication,97.9167,2023,fake_sample.csv
+2025-04,All Items,105.0000,2023,fake_sample.csv
+2025-04,Information and communication,97.5000,2023,fake_sample.csv
+2025-05,All Items,105.8333,2023,fake_sample.csv
+2025-05,Information and communication,97.0833,2023,fake_sample.csv
+2025-06,All Items,106.6667,2023,fake_sample.csv
+2025-06,Information and communication,96.6667,2023,fake_sample.csv
+2025-07,All Items,107.5000,2023,fake_sample.csv
+2025-07,Information and communication,96.2500,2023,fake_sample.csv
+2025-08,All Items,108.3333,2023,fake_sample.csv
+2025-08,Information and communication,95.8333,2023,fake_sample.csv
+2025-08,Transport,115.0000,2023,fake_sample.csv
+2025-09,All Items,109.1667,2023,fake_sample.csv
+2025-09,Information and communication,95.4167,2023,fake_sample.csv
+2025-09,Transport,116.0000,2023,fake_sample.csv
+2025-10,All Items,110.0000,2023,fake_sample.csv
+2025-10,Information and communication,95.0000,2023,fake_sample.csv
+2025-10,Transport,117.0000,2023,fake_sample.csv

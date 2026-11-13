@@ -12,6 +12,7 @@ from models import AddMoneyForm, Deposit, GoalForm, Income, SavingsGoal
 from money import (get_amount_to_add, get_goal_statuses, get_goals_warning, get_monthly_target,
                    get_this_month, get_today, to_cents, to_money, to_rupees)
 from routes.auth import require_user
+from services.inflation import project_goal
 
 router = APIRouter(prefix="/api/goals")
 
@@ -57,7 +58,8 @@ def add_goal(form: GoalForm, user_id: uuid.UUID = Depends(require_user)):
     check_goal_form(form)
     with open_db() as db:
         db.add(SavingsGoal(user_id=user_id, name=form.name.strip(), target_cents=to_cents(form.target_amount),
-                           saved_cents=0, deadline=form.deadline, priority=form.priority))
+                           saved_cents=0, deadline=form.deadline, priority=form.priority,
+                           category=form.category))
         db.flush()
         return build_goals_info(db, user_id)
 
@@ -72,7 +74,7 @@ def edit_goal(goal_id: uuid.UUID, form: GoalForm, user_id: uuid.UUID = Depends(r
                            f"The target can't be less than what you've already saved (Rs {to_rupees(goal.saved_cents):,.0f}).",
                            {"saved": to_rupees(goal.saved_cents)})
         goal.name, goal.target_cents = form.name.strip(), to_cents(form.target_amount)
-        goal.deadline, goal.priority = form.deadline, form.priority
+        goal.deadline, goal.priority, goal.category = form.deadline, form.priority, form.category
         db.flush()
         return build_goals_info(db, user_id)
 
@@ -86,6 +88,14 @@ def delete_goal(goal_id: uuid.UUID, user_id: uuid.UUID = Depends(require_user)):
         db.delete(goal)
         db.flush()
         return build_goals_info(db, user_id)
+
+
+@router.get("/{goal_id}/inflation-projection")
+def goal_inflation_projection(goal_id: uuid.UUID, user_id: uuid.UUID = Depends(require_user)):
+    """Estimated cost of this goal at its deadline after inflation (Statistics Mauritius CPI). Estimate only."""
+    with open_db() as db:
+        goal = find_goal(db, goal_id, user_id)
+        return project_goal(to_rupees(goal.target_cents), to_rupees(goal.saved_cents), goal.deadline, goal.category)
 
 
 @router.post("/{goal_id}/add-money")

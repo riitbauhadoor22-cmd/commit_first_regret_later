@@ -42,6 +42,7 @@ function readErrorMessage(data) {
 function formatErrorParams(params) {
   const result = Object.assign({}, params);
   if (typeof result.saved === "number") result.saved = formatMoney(result.saved);
+  if (typeof result.over === "number") result.over = formatMoney(result.over); // game: over income
   return result;
 }
 
@@ -88,8 +89,23 @@ function getGoals() { return callApi("GET", "/api/goals"); }
 function addGoal(goal) { return callApi("POST", "/api/goals", goal); }
 function editGoal(id, goal) { return callApi("PUT", "/api/goals/" + id, goal); }
 function deleteGoal(id) { return callApi("DELETE", "/api/goals/" + id); }
+// Inflation estimate (Statistics Mauritius CPI): one saved goal, or a live preview for the goal form
+function getGoalInflation(id) { return callApi("GET", "/api/goals/" + id + "/inflation-projection"); }
+// Live preview for the goal form: { target, current, deadline, category }
+function getInflationPreview(query) { return callApi("GET", "/api/inflation/projection?" + new URLSearchParams(query)); }
 
 // ===== LOANS TAB =====
-// details = { monthly_income, monthly_expenses, existing_debt_payment, credit_score, age, interest_rate, years }
+// details = { monthly_income, monthly_expenses, existing_debt_payment, interest_rate, years, missed_payment }
 function predictLoan(details) { return callApi("POST", "/api/loans/predict", details); }
 function addMoneyToGoal(id, amount) { return callApi("POST", "/api/goals/" + id + "/add-money", { amount: amount }); }
+
+// ===== ARCADE: BUDGET CHALLENGE (scores and XP are worked out on the server) =====
+function getGameLevels() { return callApi("GET", "/api/game/levels"); }
+function startGameAttempt(level, eventsOn) {
+  return callApi("POST", "/api/game/attempts", { level: level, events_on: eventsOn });
+}
+// isFinal false = first try (the server then reveals the surprise event), true = final submit (score + XP)
+function submitGameAttempt(attemptId, allocation, isFinal) {
+  return callApi("POST", "/api/game/attempts/" + attemptId + "/submit", { allocation: allocation, final: isFinal });
+}
+function getGameAttempts() { return callApi("GET", "/api/game/attempts"); }

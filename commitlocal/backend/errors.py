@@ -23,12 +23,13 @@ FIELD_CODES = {
     "amount": "INVALID_AMOUNT", "monthly_limit": "INVALID_AMOUNT", "target_amount": "INVALID_AMOUNT",
     "bank_balance": "INVALID_AMOUNT", "monthly_target": "INVALID_AMOUNT",
     "monthly_expenses": "INVALID_EXPENSES", "existing_debt_payment": "INVALID_EXPENSES",
-    "monthly_income": "INVALID_INCOME", "credit_score": "INVALID_CREDIT_SCORE", "age": "INVALID_AGE",
+    "monthly_income": "INVALID_INCOME",
     "interest_rate": "INVALID_RATE", "years": "INVALID_YEARS",
     "category": "INVALID_CATEGORY", "type": "INVALID_INCOME_TYPE", "frequency": "INVALID_INPUT",
     "email": "INVALID_EMAIL", "code": "INVALID_CODE_FORMAT", "date": "INVALID_DATE", "deadline": "INVALID_DATE",
     "name": "INVALID_NAME", "full_name": "INVALID_NAME", "note": "INVALID_NOTE",
-    "language": "INVALID_LANGUAGE",
+    "language": "INVALID_LANGUAGE", "target": "INVALID_AMOUNT", "current": "INVALID_AMOUNT",
+    "level": "INVALID_LEVEL", "allocation": "INVALID_AMOUNT",  # Arcade game
 }
 
 

@@ -93,7 +93,8 @@ test("keys built from codes exist (loan errors, verdicts, category maps)", () =>
 
 test("every error code the backend sends has a translation", () => {
   const sources = [path.join(BACKEND, "errors.py")].concat(
-    fs.readdirSync(path.join(BACKEND, "routes")).filter((f) => f.endsWith(".py")).map((f) => path.join(BACKEND, "routes", f)));
+    fs.readdirSync(path.join(BACKEND, "routes")).filter((f) => f.endsWith(".py")).map((f) => path.join(BACKEND, "routes", f)),
+    fs.readdirSync(path.join(BACKEND, "game")).filter((f) => f.endsWith(".py")).map((f) => path.join(BACKEND, "game", f)));
   const codes = new Set();
   for (const file of sources) {
     const py = fs.readFileSync(file, "utf8");

@@ -191,8 +191,6 @@ async function calculateAffordability(event) {
     ["afford-income", { label: "loan.field.income", max: LOAN_MAX_AMOUNT }],
     ["afford-expenses", { label: "loan.field.expenses", required: false, allowZero: true, max: LOAN_MAX_AMOUNT }],
     ["afford-existing", { label: "loan.field.existing", required: false, allowZero: true, max: LOAN_MAX_AMOUNT }],
-    ["afford-credit", { label: "loan.field.credit", whole: true }],
-    ["afford-age", { label: "loan.field.age", whole: true }],
     ["afford-rate", { label: "loan.field.rate", allowZero: true, max: LOAN_MAX_RATE }],
     ["afford-years", { label: "loan.field.years", max: 30, whole: true }],
   ], "afford-msg");
@@ -204,8 +202,9 @@ async function calculateAffordability(event) {
   try {
     answer = await predictLoan({
       monthly_income: v["afford-income"], monthly_expenses: v["afford-expenses"] || 0,
-      existing_debt_payment: v["afford-existing"] || 0, credit_score: v["afford-credit"], age: v["afford-age"],
+      existing_debt_payment: v["afford-existing"] || 0,
       interest_rate: v["afford-rate"], years: v["afford-years"],
+      missed_payment: byId("afford-missed").value === "yes", // optional risk-model question
     });
   } catch (error) {
     byId("afford-msg").textContent = error.message; // friendly message from the backend (or "no internet")
@@ -227,8 +226,23 @@ function showAffordability(answer, v) {
   warning.hidden = amount > 0;
   warning.textContent = t("loan.noRoom");
 
-  byId("afford-ai").textContent = t(answer.source === "ai" ? "loan.aiEstimate" : "loan.estimate",
-    { amount: LoanCalc.formatRupees(amount) });
+  // Final answer = lower of the AI estimate and the 40% rule; say which one was the limit
+  const usedAi = answer.source === "ai";
+  const limit = Math.round(LoanCalc.MAX_DEBT_TO_INCOME * 100);
+  const info = answer.model_info || {};
+  byId("afford-ai").textContent = t("loan.finalAnswer", { amount: LoanCalc.formatRupees(amount) });
+  byId("afford-limit").textContent = usedAi && answer.limited_by === "ai" ? t("loan.limitedBy.ai") : t("loan.limitedBy.rule", { limit: limit });
+  byId("afford-ai-est").textContent = usedAi ? t("loan.aiEstimate", { amount: LoanCalc.formatRupees(answer.ai_max_loan),
+    rows: Number(info.rows || 0).toLocaleString("en-IN") }) : t("loan.aiUnavailable");
+  byId("afford-risk").hidden = !usedAi;
+  byId("afford-risk").textContent = usedAi ? t("loan.risk", { level: t("loan.risk." + answer.risk_level),
+    risk: Math.round(answer.predicted_risk * 100), base: Math.round(answer.base_default_rate * 100) }) : "";
+  // "How is this calculated?" — dataset size and years come from the model card (via the API)
+  byId("afford-how-model").textContent = usedAi ? t("loan.how.model", { rows: Number(info.rows || 0).toLocaleString("en-IN"),
+    from: String(info.date_from || "").slice(0, 4), to: String(info.date_to || "").slice(0, 4) }) : t("loan.how.noModel", { limit: limit });
+  byId("afford-how-search").hidden = !usedAi;
+  byId("afford-how-search").textContent = usedAi ? t("loan.how.search", { base: Math.round(answer.base_default_rate * 100),
+    cap: Math.round((answer.max_payment_to_income || 0) * 100), limit: limit }) : "";
   byId("afford-dti-text").textContent = Math.round(ratio * 100) + "%";
   const bar = byId("afford-dti-bar");
   bar.className = "bar " + level;
@@ -238,8 +252,7 @@ function showAffordability(answer, v) {
   verdict.className = "afford-verdict " + level;
   verdict.textContent = t("loan.verdict." + level); // same limits as the backend's English verdict
   byId("afford-formula").textContent = t("loan.formula", { limit: Math.round(LoanCalc.MAX_DEBT_TO_INCOME * 100),
-    rate: v["afford-rate"], years: v["afford-years"], amount: LoanCalc.formatRupees(answer.formula_max_loan) })
-    + (answer.source === "ai" ? "" : " " + t("loan.aiUnavailable"));
+    rate: v["afford-rate"], years: v["afford-years"], amount: LoanCalc.formatRupees(answer.formula_max_loan) });
 
   // Monthly repayment for the estimated amount at the chosen rate and term
   const plan = LoanCalc.repaymentFor(amount, v["afford-rate"], v["afford-years"]);
@@ -248,7 +261,7 @@ function showAffordability(answer, v) {
   byId("afford-interest").textContent = LoanCalc.formatRupees(plan.totalInterest);
   byId("afford-total").textContent = LoanCalc.formatRupees(plan.totalRepaid);
 
-  // Graph: standard-rule max loan for each term (1–25 years) vs the AI estimate (which doesn't depend on term)
+  // Graph: standard-rule max loan for each term (1–25 years) vs the AI estimate for the chosen term (flat line)
   const curve = LoanCalc.borrowCurve(Number(answer.formula_monthly_payment) || 0, v["afford-rate"]);
   drawLoanChart("afford-chart", {
     type: "line",
@@ -256,7 +269,7 @@ function showAffordability(answer, v) {
       labels: curve.map((p) => p.years),
       datasets: [
         { label: t("loan.chart.standardRule"), data: curve.map((p) => p.amount), borderColor: "#38d6ff", backgroundColor: "rgba(56, 214, 255, 0.16)", fill: true, pointRadius: 2, tension: 0.2 },
-        { label: t("loan.chart.aiEstimate"), data: curve.map(() => amount), borderColor: "#3ddc84", borderDash: [6, 4], pointRadius: 0 },
+        { label: t("loan.chart.aiEstimate"), data: curve.map(() => (usedAi ? answer.ai_max_loan : null)), borderColor: "#3ddc84", borderDash: [6, 4], pointRadius: 0 },
       ],
     },
     options: loanChartOptions(t("loan.chart.termYears")),

@@ -469,6 +469,11 @@ body.app { padding: 16px 16px calc(110px + env(safe-area-inset-bottom)); } /* ro
 .status.done { background: var(--blue-soft); color: var(--cyan); }
 .goal-numbers { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 0.92rem; }
 .goal-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+/* Inflation estimate (Statistics Mauritius CPI) on goal cards and in the goal form */
+.inflation-box { padding: 10px 12px; border-radius: 14px; background: var(--blue-soft); border: 1px solid var(--line); font-size: 0.88rem; overflow-wrap: anywhere; }
+.inflation-box p { margin: 0 0 4px; }
+.inflation-box .inflation-warn { color: #ffc999; }
+.inflation-box .fine-print { margin: 6px 0 0; color: var(--muted); font-size: 0.75rem; }
 
 /* ===== LOANS TAB ===== */
 .loan-form { display: flex; flex-direction: column; gap: 12px; }
@@ -488,9 +493,45 @@ body.app { padding: 16px 16px calc(110px + env(safe-area-inset-bottom)); } /* ro
 .game-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .game-box { display: flex; align-items: center; justify-content: center; min-height: 120px; padding: 12px; font-weight: 600; }
 
+/* Budget Challenge game (arcade-tab.js) — reuses .split-bar colours from the Money tab */
+.game-xp { margin: 0; font-weight: 700; color: var(--cyan); }
+.game-levels { display: flex; flex-direction: column; gap: 8px; }
+.game-level-btn { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
+  min-height: 60px; padding: 8px 14px; text-align: left; width: 100%; }
+.game-level-name { font-size: 1rem; overflow-wrap: anywhere; }
+.game-level-sub { font: 500 0.85rem var(--text-font); color: var(--muted); }
+.game-income { margin: 0; font: 700 1.15rem var(--heading-font); }
+.game-field { gap: 4px; }
+.game-field-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text); }
+.game-field input:disabled { opacity: 0.7; }
+.game-kind-need { color: var(--blue); }
+.game-kind-want { color: var(--expense-on-dark); }
+.game-kind-savings { color: var(--income-on-dark); }
+.game-allocated { margin: 0; font-weight: 600; }
+.game-left { margin: 0; font-weight: 700; color: var(--income); }
+.game-summary { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.game-summary .over, .game-left.over { color: var(--over); }
+.game-event { padding: 14px; border-radius: 16px; background: rgba(255, 154, 74, 0.14); border: 1px solid rgba(255, 154, 74, 0.4);
+  animation: game-pop 0.35s ease-out; }
+.game-event p { margin: 0 0 6px; }
+.game-event-title { font-weight: 700; color: var(--expense-on-dark); }
+.game-xp-won { margin: 0; font-weight: 700; color: var(--cyan); }
+.game-breakdown, .game-tips { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.game-tips { padding-left: 18px; list-style: disc; color: #d6e0f7; }
+.game-part-fill { width: 0; transition: width 0.6s ease-out; }
+#game-result:not([hidden]) { animation: game-pop 0.35s ease-out; }
+@keyframes game-pop { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .game-event, #game-result:not([hidden]) { animation: none; }
+  .game-part-fill { transition: none; }
+}
+
 /* ===== LOANS: AI ESTIMATE ===== */
 .afford-ai { margin: 16px 0 10px; font-family: var(--heading-font); font-size: 1.25rem; font-weight: 700; color: var(--text); }
 .afford-verdict { margin: 10px 0 4px; font-weight: 700; }
+/* "How is this calculated?" (Loans tab): tap row is at least 44px high */
+.how-calc { margin: 12px 0 4px; }
+.how-calc summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--primary-2); font-weight: 600; }
 .afford-verdict.good { color: var(--income); }
 .afford-verdict.warn { color: var(--expense); }
 .afford-verdict.over { color: var(--over); }

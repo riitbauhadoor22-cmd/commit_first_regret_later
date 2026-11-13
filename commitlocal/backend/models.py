@@ -5,7 +5,7 @@ from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from categories import CATEGORIES, INCOME_TYPES
+from categories import CATEGORIES, GOAL_CPI_CATEGORIES, INCOME_TYPES
 
 MAX_AMOUNT = 10_000_000
 
@@ -38,9 +38,6 @@ class CodeForm(BaseModel):
 
 
 # ===== LOAN FORM (Loans tab, "How much can I borrow?") =====
-# Credit score range of the model's training data (backend/DATA/synthetic_loan_data.csv: min 406, max 850).
-CREDIT_SCORE_MIN = 406
-CREDIT_SCORE_MAX = 850
 
 
 def check_range(value, low, high, message):
@@ -54,10 +51,9 @@ class LoanPredictForm(BaseModel):
     monthly_income: float
     monthly_expenses: float = 0
     existing_debt_payment: float = 0
-    credit_score: float
-    age: int
-    interest_rate: float = 10  # % a year, only used for the 40% "standard rule" amount
-    years: int = 5             # loan term, only used for the 40% "standard rule" amount
+    interest_rate: float = 10     # % a year, for the 40% rule and the risk model's installment
+    years: int = 5                # loan term, same
+    missed_payment: bool = False  # "Missed a payment in the last 12 months?" (risk model input)
 
     @field_validator("monthly_income")
     @classmethod
@@ -70,17 +66,6 @@ class LoanPredictForm(BaseModel):
     @classmethod
     def check_not_negative(cls, value):
         return check_range(value, 0, MAX_AMOUNT, "Expenses and repayments can't be negative (or above Rs 1 crore).")
-
-    @field_validator("credit_score")
-    @classmethod
-    def check_credit_score(cls, value):
-        return check_range(value, CREDIT_SCORE_MIN, CREDIT_SCORE_MAX,
-                           f"Credit score must be between {CREDIT_SCORE_MIN} and {CREDIT_SCORE_MAX}.")
-
-    @field_validator("age")
-    @classmethod
-    def check_age(cls, value):
-        return check_range(value, 18, 100, "Age must be between 18 and 100.")
 
     @field_validator("interest_rate")
     @classmethod
@@ -153,10 +138,38 @@ class GoalForm(BaseModel):
     target_amount: float = Field(gt=0, le=MAX_AMOUNT)
     deadline: datetime.date
     priority: int = Field(default=2, ge=1, le=3)  # 1 High, 2 Medium, 3 Low
+    category: Optional[str] = None  # e.g. "Phone" (see GOAL_CPI_CATEGORIES); empty = general inflation
+
+    @field_validator("category")
+    @classmethod
+    def check_goal_category(cls, value):
+        if value in (None, ""):
+            return None
+        if value not in GOAL_CPI_CATEGORIES:
+            raise ValueError("Pick one of: " + ", ".join(GOAL_CPI_CATEGORIES))
+        return value
 
 
 class AddMoneyForm(BaseModel):
     amount: float = Field(gt=0, le=MAX_AMOUNT)
+
+
+# ===== ARCADE: BUDGET CHALLENGE GAME =====
+class GameStartForm(BaseModel):
+    level: int = Field(ge=1, le=99)  # must also exist in game/scenarios.py (checked in the route)
+    events_on: bool = True           # surprise events on/off (any level)
+
+
+class GameSubmitForm(BaseModel):
+    allocation: dict[str, float] = Field(max_length=20)  # {category id: rupees}
+    final: bool = False                                  # False = first try (then the event shows), True = final submit
+
+    @field_validator("allocation")
+    @classmethod
+    def check_amounts(cls, value):
+        for amount in value.values():  # NaN / Infinity / negative / huge -> 422
+            check_range(amount, 0, MAX_AMOUNT, "Amounts must be between 0 and 10,000,000.")
+        return value
 
 
 # ===== DATABASE TABLES (SQLAlchemy ORM) =====
@@ -342,6 +355,7 @@ class SavingsGoal(Base):
     saved_cents = cents_column(default=0)
     deadline = mapped_column(sa.Date, nullable=False, index=True)
     priority = mapped_column(sa.Integer, nullable=False, default=2)  # 1 High, 2 Medium, 3 Low
+    category = mapped_column(sa.String(30), nullable=True)  # goal category for the inflation estimate (migration 0003)
     created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
     __table_args__ = (*not_negative("target_cents", "saved_cents"),
                       sa.CheckConstraint("priority BETWEEN 1 AND 3", name="priority_valid"))
@@ -349,7 +363,8 @@ class SavingsGoal(Base):
     def to_dict(self):
         return {"id": str(self.id), "user_id": str(self.user_id), "name": self.name,
                 "target_amount": to_rupees(self.target_cents), "saved_amount": to_rupees(self.saved_cents),
-                "deadline": iso(self.deadline), "priority": self.priority, "created_at": iso(self.created_at)}
+                "deadline": iso(self.deadline), "priority": self.priority, "category": self.category,
+                "created_at": iso(self.created_at)}
 
 
 class Deposit(Base):
@@ -368,3 +383,25 @@ class Deposit(Base):
         return {"id": str(self.id), "user_id": str(self.user_id),
                 "goal_id": str(self.goal_id) if self.goal_id else None,
                 "amount": to_rupees(self.amount_cents), "date": iso(self.date), "created_at": iso(self.created_at)}
+
+
+class GameAttempt(Base):
+    """One Budget Challenge game (Arcade). id = attempt_id. Never linked to the real income/expense/budget tables."""
+    __tablename__ = "game_attempts"
+    id = id_column()
+    user_id = user_id_column()
+    level = mapped_column(sa.Integer, nullable=False)
+    events_on = mapped_column(sa.Boolean, nullable=False, default=True)
+    event = mapped_column(sa.String(40), nullable=True)            # event id chosen at the start (empty = no event)
+    stage = mapped_column(sa.String(10), nullable=False, default="start")  # start -> event (event shown) -> done
+    allocation = mapped_column(sa.Text, nullable=True)             # final allocation as JSON {category: cents}
+    score = mapped_column(sa.Integer, nullable=True)               # 0-100, set at the final submit
+    xp = mapped_column(sa.Integer, nullable=False, default=0)
+    xp_awarded = mapped_column(sa.Boolean, nullable=False, default=False)  # XP given once per attempt
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, index=True)
+    completed_at = mapped_column(sa.DateTime, nullable=True)
+    __table_args__ = (*not_negative("xp"), sa.CheckConstraint("score BETWEEN 0 AND 100", name="score_valid"))
+
+    def to_dict(self):
+        return {"attempt_id": str(self.id), "level": self.level, "score": self.score, "xp": self.xp,
+                "events_on": self.events_on, "created_at": iso(self.created_at), "completed_at": iso(self.completed_at)}

@@ -24,9 +24,9 @@ def test_bad_category_and_missing_amount(logged_in):
 
 
 def test_loan_form_codes(logged_in):
-    good = {"monthly_income": 30000, "credit_score": 700, "age": 25}
-    assert logged_in.post("/api/loans/predict", json={**good, "age": 15}).json()["code"] == "INVALID_AGE"
-    assert logged_in.post("/api/loans/predict", json={**good, "credit_score": 1}).json()["code"] == "INVALID_CREDIT_SCORE"
+    good = {"monthly_income": 30000}
+    assert logged_in.post("/api/loans/predict", json={**good, "years": 0}).json()["code"] == "INVALID_YEARS"
+    assert logged_in.post("/api/loans/predict", json={"monthly_income": -1}).json()["code"] == "INVALID_INCOME"
 
 
 # ===== OUR OWN ERRORS =====

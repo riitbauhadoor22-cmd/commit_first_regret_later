@@ -141,6 +141,7 @@ function openPage(name) {
   if (name === "money") loadMoneyTab();     // in money-tab.js
   if (name === "targets") loadTargetsTab(); // in targets-tab.js
   if (name === "loans") prefillLoanFromMoney(); // in loans-tab.js
+  if (name === "arcade") loadArcadeTab(); // in arcade-tab.js
 }
 
 function setUpTabs() {
@@ -183,6 +184,7 @@ function redrawAfterLanguageChange() {
   if (openName === "money") redrawMoneyTab(); // in money-tab.js
   if (openName === "targets") loadTargetsTab();
   if (openName === "loans") redrawLoans(); // in loans-tab.js
+  if (openName === "arcade") redrawArcade(); // in arcade-tab.js
 }
 
 // ===== OFFLINE (service worker) =====

@@ -1,0 +1,62 @@
+{
+  "dataset": "All Lending Club loan data",
+  "source": "Kaggle - All Lending Club loan data (Lending Club, USA)",
+  "rows_read": 2260668,
+  "rows_used": 825536,
+  "rows_removed": {
+    "no final outcome (Current, Late, In Grace Period, ...)": 954281,
+    "issued after 2015 (or no issue date)": 480812,
+    "income missing or <= 0": 6,
+    "missing feature value": 25,
+    "dti below 0% or above 100%": 8,
+    "extreme payment or loan size (installment > monthly income, loan > 5x income, or <= 0)": 0,
+    "odd interest rate or term": 0
+  },
+  "date_from": "2007-06",
+  "date_to": "2015-12",
+  "label": "1 = Charged Off / Default, 0 = Fully Paid (incl. 'Does not meet the credit policy' loans with that outcome)",
+  "features": [
+    "payment_to_income",
+    "dti",
+    "loan_to_income",
+    "int_rate",
+    "term_months",
+    "missed_payment"
+  ],
+  "feature_notes": {
+    "payment_to_income": "monthly installment / (annual_inc / 12)",
+    "dti": "LC dti / 100: existing monthly debt payments (excluding this loan and mortgage) / monthly income",
+    "loan_to_income": "loan_amnt / annual_inc",
+    "int_rate": "interest rate in % a year",
+    "term_months": "36 or 60 (the app clips its term to this range)",
+    "missed_payment": "1 if delinq_2yrs > 0 (30+ days late in the last 2 years); the app asks about 12 months"
+  },
+  "model": "HistGradientBoostingClassifier (monotonic: risk never goes down when a burden ratio goes up)",
+  "test_roc_auc": 0.7054,
+  "base_default_rate": 0.1846,
+  "payment_to_income_bands": [
+    {
+      "payment_to_income": "<10%",
+      "loans": 585286,
+      "default_rate": 0.1624
+    },
+    {
+      "payment_to_income": "10-20%",
+      "loans": 237342,
+      "default_rate": 0.2385
+    },
+    {
+      "payment_to_income": "20-30%",
+      "loans": 2888,
+      "default_rate": 0.2597
+    },
+    {
+      "payment_to_income": ">30%",
+      "loans": 20,
+      "default_rate": 0.2
+    }
+  ],
+  "split": "80/20 stratified, random_state=42",
+  "training_date": "2026-11-14",
+  "sklearn_version": "1.9.1"
+}
