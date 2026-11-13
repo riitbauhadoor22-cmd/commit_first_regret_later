@@ -1,11 +1,13 @@
 # routes/auth.py — register, log in (password + emailed 6-digit code), unlock a locked account, log out.
-import time
+from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
+from sqlalchemy import delete, func, select, update
 
 from database import open_db
+from errors import AppError
 from email_sender import send_otp_email
-from models import CodeForm, EmailForm, LoginForm, RegisterForm
+from models import CodeForm, EmailForm, LanguageForm, LoginForm, LoginSession, OtpCode, Profile, RegisterForm, User, utc_now
 from security import (check_password, get_password_problems, hash_password, hash_text,
                       make_otp, make_session_token, same_hash)
 
@@ -13,54 +15,57 @@ router = APIRouter(prefix="/api/auth")
 
 MAX_PASSWORD_TRIES = 3
 MAX_CODE_TRIES = 5                 # wrong guesses allowed per code
-CODE_LIFETIME = 5 * 60             # 5 minutes
-RESEND_WAIT = 60                   # seconds before a new unlock code can be sent
-RESEND_COOLDOWN = 30               # seconds between "Resend OTP" taps
-PENDING_WINDOW = 30 * 60           # "Resend OTP" only works within 30 min of the last code
-EXPIRED_MESSAGE = "Your code has expired. Please request a new one."
-SESSION_LIFETIME = 7 * 24 * 3600   # stay logged in for 7 days
+CODE_LIFETIME = timedelta(minutes=5)
+RESEND_WAIT = timedelta(seconds=30)  # before a new code can be sent
+RESEND_WINDOW = timedelta(minutes=30)  # "Resend" only works if a code was sent this recently
+SESSION_LIFETIME = timedelta(days=7)  # stay logged in for 7 days
 COOKIE_NAME = "session"
 LOCKED_MESSAGE = "Your account is locked after 3 wrong passwords. Tap 'Send me a login code'."
 
 
 # ===== HELPERS =====
 def find_user(db, email):
-    return db.execute("SELECT * FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
-
-
-def last_code_time(db, user_id):
-    """When the user's newest code was made (unix time), or None."""
-    return db.execute("SELECT MAX(created_at) AS last FROM otp_codes WHERE user_id = ?", (user_id,)).fetchone()["last"]
+    return db.scalar(select(User).where(User.email == email.strip().lower()))
 
 
 def code_sent_recently(db, user_id):
-    last = last_code_time(db, user_id)
-    return last is not None and last > time.time() - RESEND_WAIT
+    last = db.scalar(select(func.max(OtpCode.created_at)).where(OtpCode.user_id == user_id))
+    return last is not None and last > utc_now() - RESEND_WAIT
 
 
 def send_new_code(db, user):
     """Make a new 6-digit code, save its hash, and email it. Older codes stop working."""
-    now = int(time.time())
     code = make_otp()
-    db.execute("UPDATE otp_codes SET used = 1 WHERE user_id = ? AND used = 0", (user["id"],))
-    db.execute("INSERT INTO otp_codes (user_id, code_hash, expires_at, created_at) VALUES (?, ?, ?, ?)",
-               (user["id"], hash_text(code), now + CODE_LIFETIME, now))
+    db.execute(update(OtpCode).where(OtpCode.user_id == user.id, OtpCode.used.is_(False)).values(used=True))
+    db.add(OtpCode(user_id=user.id, code_hash=hash_text(code), expires_at=utc_now() + CODE_LIFETIME))
     try:
-        send_otp_email(user["email"], code)
+        send_otp_email(user.email, code)
     except Exception as error:
         print("Email failed:", error)  # shows in the server window
-        raise HTTPException(503, "We couldn't send the email right now. Please try again in a minute.")
+        raise AppError(503, "EMAIL_FAILED", "We couldn't send the email right now. Please try again in a minute.")
 
 
 def get_current_user(request):
-    """The logged-in user (from the session cookie), or None."""
+    """The logged-in user (from the session cookie) as {id, full_name, email}, or None."""
     token = request.cookies.get(COOKIE_NAME)
     if not token:
         return None
     with open_db() as db:
-        return db.execute(
-            "SELECT users.id, full_name, email FROM sessions JOIN users ON users.id = sessions.user_id "
-            "WHERE token_hash = ? AND expires_at > ?", (hash_text(token), int(time.time()))).fetchone()
+        row = db.execute(
+            select(User.id, User.email, Profile.full_name, Profile.language)
+            .join(LoginSession, LoginSession.user_id == User.id)
+            .outerjoin(Profile, Profile.user_id == User.id)
+            .where(LoginSession.token_hash == hash_text(token), LoginSession.expires_at > utc_now())).first()
+    return {"id": row.id, "email": row.email, "full_name": row.full_name or "",
+            "language": row.language} if row else None
+
+
+def require_user(request: Request):
+    """Used by every money route: the logged-in user's id (UUID), or a 401 error if nobody is logged in."""
+    user = get_current_user(request)
+    if user is None:
+        raise AppError(401, "NOT_LOGGED_IN", "Please log in first.")
+    return user["id"]
 
 
 # ===== ROUTES =====
@@ -68,19 +73,21 @@ def get_current_user(request):
 def register(form: RegisterForm):
     full_name = form.full_name.strip()
     if not full_name:
-        raise HTTPException(400, "Please enter your full name.")
+        raise AppError(400, "NAME_REQUIRED", "Please enter your full name.")
     if form.password != form.confirm_password:
-        raise HTTPException(400, "The two passwords don't match.")
+        raise AppError(400, "PASSWORDS_DIFFERENT", "The two passwords don't match.")
     problems = get_password_problems(form.password)
     if problems:
-        raise HTTPException(400, "Your password needs " + ", ".join(problems) + ".")
+        raise AppError(400, "PASSWORD_WEAK", "Your password needs " + ", ".join(problems) + ".")
 
     with open_db() as db:
         if find_user(db, form.email):
-            raise HTTPException(409, "An account with this email already exists. Try logging in.")
-        db.execute("INSERT INTO users (full_name, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                   (full_name, form.email.strip().lower(), hash_password(form.password), int(time.time())))
-    return {"message": "Account created! You can log in now."}
+            raise AppError(409, "EMAIL_TAKEN", "An account with this email already exists. Try logging in.")
+        user = User(email=form.email.strip().lower(), password_hash=hash_password(form.password))
+        db.add(user)
+        db.flush()  # gives the user its id
+        db.add(Profile(user_id=user.id, full_name=full_name))
+    return {"message": "Account created! You can log in now.", "code": "ACCOUNT_CREATED"}
 
 
 @router.post("/login")
@@ -89,42 +96,44 @@ def login(form: LoginForm):
     with open_db() as db:
         user = find_user(db, form.email)
         if user is None:
-            raise HTTPException(401, "Wrong email or password.")
-        if user["is_locked"]:
-            raise HTTPException(423, LOCKED_MESSAGE)
+            raise AppError(401, "WRONG_LOGIN", "Wrong email or password.")
+        if user.is_locked:
+            raise AppError(423, "ACCOUNT_LOCKED", LOCKED_MESSAGE)
 
-        if not check_password(form.password, user["password_hash"]):
-            tries = user["failed_attempts"] + 1
+        if not check_password(form.password, user.password_hash):
+            tries = user.failed_attempts + 1
             locked = tries >= MAX_PASSWORD_TRIES
-            db.execute("UPDATE users SET failed_attempts = ?, is_locked = ? WHERE id = ?",
-                       (tries, int(locked), user["id"]))
+            user.failed_attempts, user.is_locked = tries, locked
             db.commit()  # save before raising the error, or the count would be lost
             if locked:
-                raise HTTPException(423, LOCKED_MESSAGE)
+                raise AppError(423, "ACCOUNT_LOCKED", LOCKED_MESSAGE)
             left = MAX_PASSWORD_TRIES - tries
-            raise HTTPException(401, f"Wrong email or password. {left} attempt{'s' if left > 1 else ''} left.")
+            raise AppError(401, "WRONG_LOGIN_TRIES", f"Wrong email or password. {left} attempt{'s' if left > 1 else ''} left.",
+                           {"left": left})
 
-        db.execute("UPDATE users SET failed_attempts = 0 WHERE id = ?", (user["id"],))
+        user.failed_attempts = 0
         send_new_code(db, user)
-    return {"message": "Password correct. We emailed you a 6-digit code.",
-            "expires_in": CODE_LIFETIME, "resend_wait": RESEND_COOLDOWN}
+    return code_sent_reply("Password correct. We emailed you a 6-digit code.", "CODE_SENT")
+
+
+def code_sent_reply(message, code):
+    """Tells the code screen how long the code lasts and how long until Resend works."""
+    return {"message": message, "code": code, "expires_in": int(CODE_LIFETIME.total_seconds()),
+            "resend_wait": int(RESEND_WAIT.total_seconds())}
 
 
 @router.post("/resend-code")
 def resend_code(form: EmailForm):
-    """'Resend OTP' on the code screen: email a fresh code (the old one stops working). 30-second cooldown."""
+    """Email a fresh code to someone already on the code screen (30-second cooldown)."""
     with open_db() as db:
         user = find_user(db, form.email)
-        last = last_code_time(db, user["id"]) if user else None
-        # Only for someone who got a code recently (passed the password step or asked for an unlock code)
-        if last is None or last < time.time() - PENDING_WINDOW:
-            raise HTTPException(400, "Please log in again to get a new code.")
-        wait_left = int(last + RESEND_COOLDOWN - time.time())
-        if wait_left > 0:
-            raise HTTPException(429, f"Please wait {wait_left} seconds before asking for a new code.")
+        last = user and db.scalar(select(func.max(OtpCode.created_at)).where(OtpCode.user_id == user.id))
+        if not last or last < utc_now() - RESEND_WINDOW:
+            raise AppError(400, "LOGIN_AGAIN", "Please log in again to get a new code.")
+        if code_sent_recently(db, user.id):
+            raise AppError(429, "RESEND_WAIT", "Please wait a few seconds before asking for another code.")
         send_new_code(db, user)
-    return {"message": "We emailed you a new 6-digit code.",
-            "expires_in": CODE_LIFETIME, "resend_wait": RESEND_COOLDOWN}
+    return code_sent_reply("We emailed you a new 6-digit code.", "CODE_RESENT")
 
 
 @router.post("/send-login-code")
@@ -132,61 +141,57 @@ def send_login_code(form: EmailForm):
     """For locked accounts: email a code that logs in and unlocks the account."""
     with open_db() as db:
         user = find_user(db, form.email)
-        if user and user["is_locked"] and not code_sent_recently(db, user["id"]):
+        if user and user.is_locked and not code_sent_recently(db, user.id):
             send_new_code(db, user)
     # Same reply every time, so nobody can use this to check which emails have accounts
-    return {"message": "If this account is locked, we've emailed a login code. Check your inbox.",
-            "expires_in": CODE_LIFETIME, "resend_wait": RESEND_COOLDOWN}
+    return {"message": "If this account is locked, we've emailed a login code. Check your inbox.", "code": "LOCKED_CODE_SENT"}
 
 
 @router.post("/verify-code")
 def verify_code(form: CodeForm, request: Request, response: Response):
     """Step 2: check the emailed code. If correct, log in (and unlock the account)."""
-    now = int(time.time())
     with open_db() as db:
         user = find_user(db, form.email)
         code_row = None
         if user:
-            code_row = db.execute("SELECT * FROM otp_codes WHERE user_id = ? AND used = 0 ORDER BY id DESC LIMIT 1",
-                                  (user["id"],)).fetchone()
+            code_row = db.scalar(select(OtpCode).where(OtpCode.user_id == user.id, OtpCode.used.is_(False))
+                                 .order_by(OtpCode.created_at.desc()).limit(1))
         if code_row is None:
-            raise HTTPException(400, "This code no longer works. Please request a new one.")
-        if code_row["expires_at"] < now:
-            raise HTTPException(410, EXPIRED_MESSAGE)  # 410 = expired; the app then shows "Resend OTP"
+            raise AppError(400, "LOGIN_AGAIN", "Please log in again to get a new code.")
+        if code_row.expires_at < utc_now():
+            raise AppError(410, "CODE_EXPIRED", "Your code has expired. Please request a new one.")
 
-        if not same_hash(code_row["code_hash"], hash_text(form.code)):
-            tries = code_row["tries"] + 1
-            db.execute("UPDATE otp_codes SET tries = ?, used = ? WHERE id = ?",
-                       (tries, int(tries >= MAX_CODE_TRIES), code_row["id"]))
+        if not same_hash(code_row.code_hash, hash_text(form.code)):
+            code_row.attempts += 1
+            code_row.used = code_row.attempts >= MAX_CODE_TRIES
             db.commit()
-            raise HTTPException(400, "Wrong code. Please check your email and try again.")
+            raise AppError(400, "WRONG_CODE", "Wrong code. Please check your email and try again.")
 
         token = make_session_token()
-        db.execute("UPDATE otp_codes SET used = 1 WHERE id = ?", (code_row["id"],))
-        db.execute("UPDATE users SET failed_attempts = 0, is_locked = 0 WHERE id = ?", (user["id"],))
-        db.execute("INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)",
-                   (hash_text(token), user["id"], now + SESSION_LIFETIME))
+        code_row.used = True
+        user.failed_attempts, user.is_locked = 0, False
+        db.add(LoginSession(token_hash=hash_text(token), user_id=user.id, expires_at=utc_now() + SESSION_LIFETIME))
 
     # httponly = JavaScript can't read the cookie, so a bad script can't steal it
-    response.set_cookie(COOKIE_NAME, token, max_age=SESSION_LIFETIME, httponly=True,
+    response.set_cookie(COOKIE_NAME, token, max_age=int(SESSION_LIFETIME.total_seconds()), httponly=True,
                         samesite="lax", secure=request.url.scheme == "https")
-    return {"message": "Logged in."}
-
-
-def require_user(request):
-    """Use in money routes: the logged-in user, or a 401 error."""
-    user = get_current_user(request)
-    if user is None:
-        raise HTTPException(401, "Please log in again.")
-    return user
+    return {"message": "Logged in.", "code": "LOGGED_IN"}
 
 
 @router.get("/me")
 def me(request: Request):
     user = get_current_user(request)
     if user is None:
-        raise HTTPException(401, "Not logged in.")
-    return {"full_name": user["full_name"], "email": user["email"]}
+        raise AppError(401, "NOT_LOGGED_IN", "Not logged in.")
+    return {"full_name": user["full_name"], "email": user["email"], "language": user["language"]}
+
+
+@router.put("/language")
+def save_language(form: LanguageForm, user_id=Depends(require_user)):  # login checked first -> 401 before 422
+    """Remembers the chosen language on the account, so it follows the user to other devices."""
+    with open_db() as db:
+        db.execute(update(Profile).where(Profile.user_id == user_id).values(language=form.language))
+    return {"language": form.language}
 
 
 @router.post("/logout")
@@ -194,6 +199,6 @@ def logout(request: Request, response: Response):
     token = request.cookies.get(COOKIE_NAME)
     if token:
         with open_db() as db:
-            db.execute("DELETE FROM sessions WHERE token_hash = ?", (hash_text(token),))
+            db.execute(delete(LoginSession).where(LoginSession.token_hash == hash_text(token)))
     response.delete_cookie(COOKIE_NAME)
-    return {"message": "Logged out."}
+    return {"message": "Logged out.", "code": "LOGGED_OUT"}

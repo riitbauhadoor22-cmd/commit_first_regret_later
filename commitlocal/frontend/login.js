@@ -1,11 +1,11 @@
 // login.js — runs login.html: tabs, the live password strength meter, and the calls to /api/auth/...
+// Texts come from i18n.js: t("key"). Backend replies carry a "code" that is translated here (see readMessage).
 
 // ===== STATE =====
 let currentEmail = ""; // remembered between the password step and the code step
 let codeExpiresAt = 0;  // when the current code expires (ms, from Date.now())
 let resendReadyAt = 0;  // when "Resend OTP" can be tapped again (ms)
 let codeTimer = null;   // the 1-second countdown interval
-const EXPIRED_TEXT = "Your code has expired. Please request a new one.";
 
 // Same rules as get_password_problems() in backend/security.py
 const PASSWORD_RULES = [
@@ -18,12 +18,12 @@ const PASSWORD_RULES = [
 
 // Index = how many rules pass (0 to 5)
 const STRENGTH_LEVELS = [
-  { label: "", color: "#ddd" },
-  { label: "Very weak", color: "#d32f2f" },
-  { label: "Weak", color: "#f57c00" },
-  { label: "Okay", color: "#fbc02d" },
-  { label: "Good", color: "#7cb342" },
-  { label: "Strong", color: "#2e7d32" },
+  { key: "", color: "#3a4670" },
+  { key: "login.strength.veryWeak", color: "#ff5c6c" },
+  { key: "login.strength.weak", color: "#ff9f43" },
+  { key: "login.strength.okay", color: "#ffd24d" },
+  { key: "login.strength.good", color: "#9be15d" },
+  { key: "login.strength.strong", color: "#45e08a" },
 ];
 
 // ===== HELPERS =====
@@ -54,13 +54,17 @@ async function postJson(url, data) {
     return { ok: res.ok, status: res.status, message: readMessage(body),
              expiresIn: body.expires_in, resendWait: body.resend_wait };
   } catch (error) {
-    return { ok: false, status: 0, message: "No connection. Check your internet and try again." };
+    return { ok: false, status: 0, message: t("error.OFFLINE") };
   }
 }
 
+// The backend's "code" → translated text ("error.<CODE>" for problems, "auth.<CODE>" for good news).
+// Unknown code → the backend's English message, so the user always sees something.
 function readMessage(body) {
+  if (body.code && I18n.hasKey("error." + body.code)) return t("error." + body.code, body.params);
+  if (body.code && I18n.hasKey("auth." + body.code)) return t("auth." + body.code, body.params);
   if (typeof body.detail === "string") return body.detail;
-  if (Array.isArray(body.detail)) return "Please check: " + body.detail.map((d) => d.msg).join(", "); // FastAPI form errors
+  if (Array.isArray(body.detail)) return t("login.pleaseCheck") + " " + body.detail.map((d) => d.msg).join(", "); // FastAPI form errors
   return body.message || "";
 }
 
@@ -94,18 +98,18 @@ function updateCodeTimer() {
   const timer = byId("code-timer");
   if (secondsLeft > 0) {
     const secs = String(secondsLeft % 60).padStart(2, "0"); // 4:05, not 4:5
-    timer.textContent = "Code expires in " + Math.floor(secondsLeft / 60) + ":" + secs;
+    timer.textContent = t("login.expiresIn", { time: Math.floor(secondsLeft / 60) + ":" + secs });
     timer.classList.remove("error");
   } else {
     showCodeExpired();
   }
   const resend = byId("resend-btn");
   resend.disabled = waitLeft > 0;
-  resend.textContent = waitLeft > 0 ? "Resend OTP (" + waitLeft + "s)" : "Resend OTP";
+  resend.textContent = waitLeft > 0 ? t("login.resendIn", { n: waitLeft }) : t("login.resend");
 }
 
 function showCodeExpired() {
-  byId("code-timer").textContent = EXPIRED_TEXT;
+  byId("code-timer").textContent = t("login.codeExpired");
   byId("code-timer").classList.add("error");
   byId("verify-btn").disabled = true; // an expired code can't work, so only Resend is useful
   showMessage("");
@@ -140,13 +144,15 @@ function addPasswordToggles() {
     const btn = document.createElement("button");
     btn.type = "button"; // never submits the form
     btn.className = "password-toggle";
-    btn.textContent = "Show";
-    btn.setAttribute("aria-label", "Show password");
+    setText(btn, "login.show"); // setText (i18n.js) keeps the key, so a language switch updates it
+    btn.dataset.i18nAria = "login.showPassword";
+    btn.setAttribute("aria-label", t("login.showPassword"));
     btn.addEventListener("click", () => {
       const showing = input.type === "text";
       input.type = showing ? "password" : "text";
-      btn.textContent = showing ? "Show" : "Hide";
-      btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+      setText(btn, showing ? "login.show" : "login.hide");
+      btn.dataset.i18nAria = showing ? "login.showPassword" : "login.hidePassword";
+      btn.setAttribute("aria-label", t(btn.dataset.i18nAria));
     });
     wrap.append(input, btn);
   });
@@ -168,7 +174,7 @@ function updateStrengthMeter() {
   const level = STRENGTH_LEVELS[passed];
   byId("meter-bar").style.width = passed * 20 + "%";
   byId("meter-bar").style.background = level.color;
-  byId("meter-label").textContent = level.label;
+  byId("meter-label").textContent = level.key ? t(level.key) : "";
   byId("meter-label").style.color = level.color;
 }
 
@@ -177,10 +183,10 @@ async function registerUser(event) {
   event.preventDefault();
   const password = byId("reg-password").value;
   if (countPassedRules(password) < PASSWORD_RULES.length) {
-    return showMessage("Your password doesn't meet all the rules yet.", true);
+    return showMessage(t("login.rulesNotMet"), true);
   }
   if (password !== byId("reg-confirm").value) {
-    return showMessage("The two passwords don't match.", true);
+    return showMessage(t("error.PASSWORDS_DIFFERENT"), true);
   }
   const button = event.submitter;
   button.disabled = true;
@@ -199,7 +205,7 @@ async function registerUser(event) {
   openTab("login");
   setRegisterTabVisible(false); // they have an account now; the link below the form brings it back
   byId("login-password").focus();
-  showMessage("Account created, please log in.", false);
+  showMessage(t("login.accountCreated"), false);
 }
 
 async function loginUser(event) {
@@ -252,22 +258,35 @@ async function verifyCode(event) {
   window.location.href = "index.html";
 }
 
-// ===== START =====
-addPasswordToggles();
-byId("tab-login").addEventListener("click", () => openTab("login"));
-byId("tab-register").addEventListener("click", () => openTab("register"));
-byId("reg-password").addEventListener("input", updateStrengthMeter);
-byId("register-form").addEventListener("submit", registerUser);
-byId("login-form").addEventListener("submit", loginUser);
-byId("code-form").addEventListener("submit", verifyCode);
-byId("send-code-btn").addEventListener("click", sendLoginCode);
-byId("resend-btn").addEventListener("click", resendCode);
-byId("show-register-link").addEventListener("click", () => {
-  setRegisterTabVisible(true);
-  openTab("register");
-});
+// ===== LANGUAGE SWITCH =====
+// Static texts update by themselves (data-i18n); redraw the ones made here
+function redrawLoginTexts() {
+  updateStrengthMeter();
+  if (!byId("code-form").hidden) updateCodeTimer();
+}
 
-// Already logged in? Go straight to the app
-fetch("/api/auth/me").then((res) => {
-  if (res.ok) window.location.href = "index.html";
-});
+// ===== START =====
+async function startLoginPage() {
+  await I18n.ready; // wait for the texts (i18n.js) before drawing anything
+  window.addEventListener("i18n:change", redrawLoginTexts);
+  addPasswordToggles();
+  byId("tab-login").addEventListener("click", () => openTab("login"));
+  byId("tab-register").addEventListener("click", () => openTab("register"));
+  byId("reg-password").addEventListener("input", updateStrengthMeter);
+  byId("register-form").addEventListener("submit", registerUser);
+  byId("login-form").addEventListener("submit", loginUser);
+  byId("code-form").addEventListener("submit", verifyCode);
+  byId("send-code-btn").addEventListener("click", sendLoginCode);
+  byId("resend-btn").addEventListener("click", resendCode);
+  byId("show-register-link").addEventListener("click", () => {
+    setRegisterTabVisible(true);
+    openTab("register");
+  });
+
+  // Already logged in? Go straight to the app
+  fetch("/api/auth/me").then((res) => {
+    if (res.ok) window.location.href = "index.html";
+  });
+}
+
+startLoginPage();

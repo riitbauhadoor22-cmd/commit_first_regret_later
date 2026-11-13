@@ -1,19 +1,41 @@
-# main.py — starts the FastAPI server: creates the database tables, connects the API routes, serves the frontend.
+# main.py — starts the FastAPI server: brings the database tables up to date (Alembic), connects the API routes, serves the frontend.
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 from database import create_tables
+from errors import add_error_handlers
 from routes.auth import router as auth_router
 from routes.budgets import router as budgets_router
 from routes.expenses import router as expenses_router
+from routes.goals import router as goals_router
+from routes.income import router as income_router
+from routes.loans import router as loans_router
+from routes.savings import router as savings_router
+from routes.summary import router as summary_router
 
 app = FastAPI(title="Finance PWA")
+add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
 app.include_router(auth_router)
+app.include_router(summary_router)
+app.include_router(income_router)
 app.include_router(expenses_router)
 app.include_router(budgets_router)
+app.include_router(savings_router)
+app.include_router(goals_router)
+app.include_router(loans_router)
+
+
+# Tell browsers to re-check frontend files every time (a quick 304 if unchanged).
+# Without this a phone can keep an old api.js next to a new index.html → "getMe is not defined".
+@app.middleware("http")
+async def always_check_for_new_files(request: Request, call_next):
+    response = await call_next(request)
+    if not request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 # Must come last: anything that isn't /api/... is a file from the frontend folder
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

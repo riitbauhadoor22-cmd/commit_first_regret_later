@@ -1,50 +1,104 @@
-# routes/expenses.py — /api/expenses: list a month's expenses and add a new one (logged-in user only).
+# routes/expenses.py — /api/expenses: list, add, edit and delete expenses, plus the "Quick add" chips.
+# A fixed bill (is_fixed = 1) is saved once and counted in every month from its date onwards.
 import datetime
+import uuid
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, Query
 
-from categories import CATEGORIES
-from database import open_db
-from models import ExpenseForm
+from categories import CATEGORIES, get_default_kind
+from errors import AppError
+from database import find_user_row, get_user_rows, open_db
+from models import Expense, ExpenseForm, QuickAddForm
+from money import (get_everyday_expenses, get_fixed_bills, get_quick_add, get_this_month,
+                   get_today, to_cents)
 from routes.auth import require_user
+from routes.summary import MONTH_PATTERN
 
 router = APIRouter(prefix="/api/expenses")
 
 
 # ===== HELPERS =====
-def this_month():
-    return datetime.date.today().strftime("%Y-%m")
+def find_expense(db, expense_id, user_id):
+    """One expense row of this user, or a 404 error (also when it belongs to someone else)."""
+    row = find_user_row(db, Expense, expense_id, user_id)
+    if row is None:
+        raise AppError(404, "EXPENSE_NOT_FOUND", "Expense not found.")
+    return row
 
 
-def check_month(month):
-    try:
-        datetime.datetime.strptime(month, "%Y-%m")
-    except ValueError:
-        raise HTTPException(400, "Month must look like 2026-11.")
+def form_to_values(form):
+    """The column values to save, filling in the defaults: kind from the category, date = today."""
+    return {"amount_cents": to_cents(form.amount), "category": form.category,
+            "kind": form.kind or get_default_kind(form.category), "description": form.note.strip(),
+            "date": form.date or datetime.date.today(), "is_fixed": form.is_fixed}
+
+
+def save_expense(db, values, user_id, source):
+    expense = Expense(user_id=user_id, source=source, **values)
+    db.add(expense)
+    db.flush()  # fills in id and created_at
+    return expense.to_dict()
 
 
 # ===== ROUTES =====
 @router.get("")
-def list_expenses(request: Request, month: str | None = None):
-    user = require_user(request)
-    month = month or this_month()
-    check_month(month)
+def list_expenses(month: Optional[str] = Query(default=None, pattern=MONTH_PATTERN),
+                  category: Optional[str] = Query(default=None),
+                  user_id: uuid.UUID = Depends(require_user)):
+    """Everyday expenses of the month (newest first) and the fixed bills that count this month.
+    Optional `category` keeps only that category's expenses."""
+    if category is not None and category not in CATEGORIES:
+        raise AppError(422, "INVALID_CATEGORY", "Please pick one of the listed categories.")
+    month = month or get_this_month()
     with open_db() as db:
-        rows = db.execute("SELECT id, amount, category, kind, note, date FROM expenses "
-                          "WHERE user_id = ? AND date LIKE ? ORDER BY date DESC, id DESC",
-                          (user["id"], month + "-%")).fetchall()  # "2026-11-%" = any day in that month
-    expenses = [dict(row) for row in rows]
-    return {"month": month, "expenses": expenses, "total": round(sum(e["amount"] for e in expenses), 2)}
+        expenses = get_user_rows(db, Expense, user_id)
+    if category is not None:
+        expenses = [e for e in expenses if e["category"] == category]
+    everyday = sorted(get_everyday_expenses(expenses, month), key=lambda e: (e["date"], e["created_at"]), reverse=True)
+    return {"month": month, "everyday": everyday, "fixed": get_fixed_bills(expenses, month)}
 
 
 @router.post("", status_code=201)
-def add_expense(form: ExpenseForm, request: Request):
-    user = require_user(request)
-    if form.category not in CATEGORIES:
-        raise HTTPException(400, "Please pick a category from the list.")
-    day = (form.date or datetime.date.today()).isoformat()
+def add_expense(form: ExpenseForm, user_id: uuid.UUID = Depends(require_user)):
     with open_db() as db:
-        cur = db.execute("INSERT INTO expenses (user_id, amount, category, kind, note, date) VALUES (?, ?, ?, ?, ?, ?)",
-                         (user["id"], round(form.amount, 2), form.category, CATEGORIES[form.category],
-                          form.note.strip(), day))
-    return {"id": cur.lastrowid, "message": "Expense saved."}
+        return save_expense(db, form_to_values(form), user_id, form.source)
+
+
+@router.get("/quick")
+def list_quick_add(user_id: uuid.UUID = Depends(require_user)):
+    """The 4 most repeated expenses of the last 30 days."""
+    with open_db() as db:
+        expenses = get_user_rows(db, Expense, user_id)
+    return get_quick_add(expenses, get_today())
+
+
+@router.post("/quick", status_code=201)
+def add_quick_expense(form: QuickAddForm, user_id: uuid.UUID = Depends(require_user)):
+    """One tap on a chip: save that expense again with today's date."""
+    with open_db() as db:
+        chips = get_quick_add(get_user_rows(db, Expense, user_id), get_today())
+        chip = next((c for c in chips
+                     if c["note"].strip().lower() == form.note.strip().lower() and c["amount"] == form.amount), None)
+        if chip is None:
+            raise AppError(404, "QUICK_ADD_GONE", "That quick-add button isn't there any more. Please refresh.")
+        values = {"amount_cents": to_cents(chip["amount"]), "category": chip["category"], "kind": chip["kind"],
+                  "description": chip["note"], "date": datetime.date.today(), "is_fixed": False}
+        return save_expense(db, values, user_id, "quick")
+
+
+@router.put("/{expense_id}")
+def edit_expense(expense_id: uuid.UUID, form: ExpenseForm, user_id: uuid.UUID = Depends(require_user)):
+    with open_db() as db:
+        expense = find_expense(db, expense_id, user_id)
+        for column, value in form_to_values(form).items():  # "source" is kept: how it was first added
+            setattr(expense, column, value)
+        db.flush()
+        return expense.to_dict()
+
+
+@router.delete("/{expense_id}")
+def delete_expense(expense_id: uuid.UUID, user_id: uuid.UUID = Depends(require_user)):
+    with open_db() as db:
+        db.delete(find_expense(db, expense_id, user_id))
+    return {"message": "Expense deleted.", "code": "EXPENSE_DELETED"}

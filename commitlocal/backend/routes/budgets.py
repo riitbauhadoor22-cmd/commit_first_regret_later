@@ -1,36 +1,43 @@
-# routes/budgets.py — /api/budget: one overall monthly budget for ALL expenses, plus how much is spent that month.
-from fastapi import APIRouter, Request
+# routes/budgets.py — /api/budgets: see and set the monthly limit for each spending category.
+# A budget applies to every month until it is changed. "/api/budget" (no s) is kept as an alias so
+# old cached copies of the app that used the singular name don't get a 404.
+import uuid
+from typing import Optional
 
-from database import open_db
-from models import BudgetForm
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy import delete, select
+
+from database import get_user_rows, open_db
+from models import Budget, BudgetForm
+from money import to_cents
 from routes.auth import require_user
-from routes.expenses import check_month, this_month
+from routes.summary import MONTH_PATTERN
 
-router = APIRouter(prefix="/api/budget")
+router = APIRouter(prefix="/api")
 
 
 # ===== ROUTES =====
-@router.get("")
-def get_budget(request: Request, month: str | None = None):
-    """Budget + spent that month. monthly_limit is null if the user hasn't set one."""
-    user = require_user(request)
-    month = month or this_month()
-    check_month(month)
+@router.get("/budgets")
+@router.get("/budget", include_in_schema=False)  # alias (see top of file)
+def list_budgets(month: Optional[str] = Query(default=None, pattern=MONTH_PATTERN),
+                 user_id: uuid.UUID = Depends(require_user)):
+    """The user's budgets. `month` is accepted but the same budgets apply to every month."""
     with open_db() as db:
-        row = db.execute("SELECT monthly_limit FROM overall_budget WHERE user_id = ?", (user["id"],)).fetchone()
-        spent = db.execute("SELECT COALESCE(SUM(amount), 0) AS s FROM expenses WHERE user_id = ? AND date LIKE ?",
-                           (user["id"], month + "-%")).fetchone()["s"]
-    limit = row["monthly_limit"] if row else None
-    over_by = spent - limit if limit and spent > limit else 0
-    return {"month": month, "monthly_limit": limit, "spent": round(spent, 2), "over_by": round(over_by, 2)}
+        return get_user_rows(db, Budget, user_id)
 
 
-@router.put("")
-def set_budget(form: BudgetForm, request: Request):
-    user = require_user(request)
+@router.put("/budgets")
+@router.put("/budget", include_in_schema=False)  # alias (see top of file)
+def set_budget(form: BudgetForm, user_id: uuid.UUID = Depends(require_user)):
+    """Set one category's monthly limit. An empty limit removes the budget."""
     with open_db() as db:
-        # Add the budget, or replace the old one if the user already has one
-        db.execute("INSERT INTO overall_budget (user_id, monthly_limit) VALUES (?, ?) "
-                   "ON CONFLICT(user_id) DO UPDATE SET monthly_limit = excluded.monthly_limit",
-                   (user["id"], round(form.monthly_limit, 2)))
-    return {"message": "Budget saved."}
+        if form.monthly_limit is None:
+            db.execute(delete(Budget).where(Budget.user_id == user_id, Budget.category == form.category))
+        else:
+            budget = db.scalar(select(Budget).where(Budget.user_id == user_id, Budget.category == form.category))
+            if budget is None:  # first budget for this category
+                budget = Budget(user_id=user_id, category=form.category)
+                db.add(budget)
+            budget.amount_cents = to_cents(form.monthly_limit)
+        db.flush()
+        return get_user_rows(db, Budget, user_id)

@@ -15,9 +15,9 @@ A money app for young people aged **16–25**. It helps them:
 
 It is a **Progressive Web App (PWA)**. It opens in any phone browser (Chrome, Safari, Samsung Internet), can be added to the home screen, and still opens when offline.
 
-The app has **3 tabs** in a bottom tab bar: **Money**, **Targets**, **Arcade**.
+The app has **4 tabs** in a bottom tab bar: **Money**, **Targets**, **Loans**, **Arcade**.
 
-**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Tab bar + a first Money tab (Add expense, one overall monthly budget). 📝 The rest of the 3 tabs below is **planned**. All amounts are in rupees, shown as **Rs**.
+**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and Targets tab (bank balance, monthly saving, safety net, goals) restored from the earlier version, plus the Loans tab. 📝 Arcade and voice are **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
 
 ---
 
@@ -32,26 +32,33 @@ commitlocal/
 ├── .gitignore                  ← keeps .env, the database and junk files out of git
 │
 ├── frontend/                   ← everything the browser sees (HTML, CSS, plain JS)
-│   ├── index.html              ← ✅ 3 tab pages, bottom tab bar, Expenses pop-up (Add expense / Set budget) · 🆕 Add income etc.
+│   ├── index.html              ← ✅ 4 tab pages (Money, Targets, Loans, Arcade), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists)
 │   ├── login.html              ← ✅ Login / Register tabs, "enter your code" box, "account locked" box
 │   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, code countdown + Resend OTP, calls /api/auth/...
-│   ├── style.css               ← ✅→🆕 colours, fonts, cards, tab bar, progress bars (mobile-first, 360 / 390 / 430 px)
-│   ├── api.js                  ← ✅ callApi(): every call to our backend (fetch) lives here; 401 → login page
-│   ├── app.js                  ← ✅ login check, log out, tab switching, money formatting ("Rs 1,200"), open/close pop-ups
+│   ├── style.css               ← ✅ dark navy glass theme (CSS variables at the top), cards, tab bar, bars (mobile-first, 360 / 390 / 430 px)
+│   ├── api.js                  ← ✅ callApi() + one small function per endpoint (getSummary, addExpense, getGoals…); throws a friendly Error; 401 → login page
+│   ├── app.js                  ← ✅ login check, log out, tab switching (PAGES list), toasts, money/date formatting, open/close sheets, service worker
 │   │                              (replaced home.js, which is deleted)
-│   ├── money-tab.js            ← ✅ budget bar, expense list, Expenses pop-up · 🆕 Add income, quick-add chips, category budgets
-│   ├── targets-tab.js          ← 🆕 draws the Targets tab; New goal form; Add money; edit bank balance / monthly target
+│   ├── money-tab.js            ← ✅ month switcher, summary card + 50·30·20 bar, Money in/out views, quick-add chips, category budgets, fixed bills, recent, Add expense/income/budget sheets, category pop-up (tap a category row)
+│   ├── budget-calc.js          ← ✅ spent-vs-budget maths (left / over / bar %, colour level); window.BudgetCalc + Node module.exports; loaded before money-tab.js
+│   ├── loan-calc.js            ← ✅ loan maths only (amortisation, extra payments, affordability, repaymentFor = EMI for an amount); window.LoanCalc + Node module.exports
+│   ├── loans-tab.js            ← ✅ Loans tab: forms, results, Chart.js graphs (CDN chart.js@4.4.1, hidden offline); section 2 calls /api/loans/predict
+│   ├── targets-tab.js          ← ✅ draws the Targets tab; New goal form; Add money; edit bank balance / monthly target
 │   ├── voice.js                ← 🆕 microphone → text (Web Speech API, or record audio for /api/speech-to-text)
 │   ├── manifest.json           ← 🆕 app name, icons, colours, start page, "standalone" (makes it installable)
 │   ├── service-worker.js       ← 🆕 caches the app files so the app opens with no internet
 │   ├── icons/                  ← 🆕 icon-192.png, icon-512.png, apple-touch-icon.png (180×180)
-│   ├── lang.js, lang/          ← (later) other languages
+│   ├── i18n.js                 ← ✅ languages: t(key), setText(), setLanguage(code), EN / FR / KM picker; loaded FIRST in index.html + login.html
+│   ├── lang/en.json, fr.json, mfe.json ← ✅ one dictionary per language (English, French, Kreol Morisien), same keys in all three
 │   └── offline.js              ← (later) queue expenses added offline
 │
 └── backend/                    ← Python + FastAPI: all logic, data and API keys
     ├── main.py                 ← ✅→🆕 starts FastAPI, connects all the routes, serves the frontend folder
-    ├── database.py             ← ✅→🆕 opens SQLite (finance.db) and creates the tables (new money tables added)
-    ├── models.py               ← ✅→🆕 shape of incoming data (Pydantic): login forms + Income, Expense, Budget, Savings, Goal, Deposit forms
+    ├── database.py             ← ✅ SQLAlchemy connection from DATABASE_URL (SQLite or PostgreSQL), open_db(), runs Alembic, user-filtered query helpers
+    ├── models.py               ← ✅ incoming forms (Pydantic) + the database tables (SQLAlchemy ORM, see section 6)
+    ├── migrate_old_db.py       ← ✅ ONE-TIME: copies users + data from the old finance.db into the new tables
+    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py)
+    ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
     ├── categories.py           ← ✅ CATEGORIES (+ default need/want) · 🆕 the other fixed lists: categories (+ default Need/Want), income types, frequencies
@@ -62,19 +69,38 @@ commitlocal/
     │   ├── summary.py          ← 🆕 /api/summary: everything the Money tab's dark card + category rows need
     │   ├── income.py           ← 🆕 /api/income: list, add, edit, delete
     │   ├── expenses.py         ← ✅ /api/expenses: list, add · 🆕 edit, delete; quick-add chips
-    │   ├── budgets.py          ← ✅ /api/budget: one overall monthly budget (get / set) · 🆕 per-category limits
+    │   ├── budgets.py          ← ✅ /api/budgets: per-category monthly limits (list / set / remove)
     │   ├── savings.py          ← 🆕 /api/savings: bank balance, monthly target, safety net (+ add money to it)
     │   ├── goals.py            ← 🆕 /api/goals: list (with status), add, edit, delete, add money
+    │   ├── loans.py            ← ✅ /api/loans/predict: AI max-loan estimate (model loaded once at start) + 40% rule
     │   └── voice.py            ← 🆕 /api/voice/parse-expense and /api/speech-to-text (calls OpenAI)
-    ├── requirements.txt        ← ✅→🆕 adds: pytest, httpx (tests + calling OpenAI), python-multipart (audio upload)
+    ├── AI_model/loan_amount_model.pkl ← ✅ trained RandomForestRegressor (joblib, scikit-learn 1.9.1, 58 MB, git-ignored)
+    ├── train_loan_model.py     ← training script (reference only; not run by the app)
+    ├── DATA/synthetic_loan_data.csv ← training data (8,000 rows)
+    ├── requirements.txt        ← ✅→🆕 adds: pytest, httpx (tests + calling OpenAI), python-multipart (audio upload), sqlalchemy, alembic, psycopg[binary] (PostgreSQL), scikit-learn==1.9.1 + pandas + joblib (loan model)
     ├── .env.example            ← names of the keys, with no real values (safe to commit)
     ├── .env                    ← YOUR real keys (never committed, never sent to the browser)
-    └── finance.db              ← the SQLite database file (created automatically, not committed)
+    ├── app.db                  ← the SQLite database file in development (created automatically, not committed)
+    └── finance.db              ← the OLD database (only read by migrate_old_db.py)
 
+tests/backend/test_loans.py ← ✅ /api/loans/predict: numbers, validation, formula fallback, login
+tests/backend/test_error_codes.py ← ✅ every error reply has a "code" (422 field codes, AppError codes + params), "detail" kept
+tests/frontend/loan-calc.test.js ← ✅ Node built-in tests for loan-calc.js (run: node --test tests/frontend)
+tests/frontend/i18n.test.js     ← ✅ same keys + no empty values in en/fr/mfe, t() fallback, every data-i18n / t("…") / backend error code has a translation
+tests/frontend/budget-calc.test.js ← ✅ no budget, under / at / over, colour thresholds 79/80/100/101%
 tests/backend/                  ← pytest + FastAPI TestClient (temporary database, fake email — never sends real emails)
-    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test, fake email sender, logged-in client
-    ├── test_otp.py             ← ✅ code expiry (410), Resend OTP, 30-second cooldown
-    └── test_money.py           ← ✅ add expense (incl. bad amounts), set / change budget, login required
+    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender, logged-in clients
+    ├── test_otp.py             ← ✅ valid / expired / wrong code, hashes only, lowercase email, locked-account unlock
+    ├── test_money.py           ← ✅ expenses (incl. bad amounts), cents storage, UUIDs, budgets, income, savings, goals
+    ├── test_budgets_expenses.py ← ✅ budget set/update + /api/budget alias, bad input, add/edit/delete, month+category filter, other users
+    ├── test_security_db.py     ← ✅ user A can't read/edit/delete user B's data, ON DELETE CASCADE, CHECK (no negative amounts)
+    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak), login (right / wrong / unknown), /me, Gmail not set up → 503 (SMTP faked)
+    ├── test_income_summary.py  ← ✅ regular vs one-off income per month, fixed bills, budget none/under/at/over, summary maths (In/Out/Saved/Left, 50·30·20 %)
+    └── test_route_safety.py    ← ✅ reads EVERY /api route from main.app: 401 when logged out; no 500 on empty / negative / 1e20 / Infinity / NaN / text input
+tests/frontend/smoke.test.js    ← ✅ static checks: script order, every called function defined, every JS id exists in the HTML, manifest + icons, SW caches scripts, no API keys, .gitignore / .env.example
+
+**Run all tests** (from the project folder):
+`backend\venv\Scripts\python -m pytest tests/backend -q` and `node --test tests/frontend`
 ```
 
 **Rule of thumb:** if logic *can* run in Python, it goes in `backend/`. JavaScript only shows screens, sends forms, uses the microphone, and caches files for offline.
@@ -94,20 +120,41 @@ tests/backend/                  ← pytest + FastAPI TestClient (temporary datab
 8. **Resend OTP** (`POST /api/auth/resend-code`) → clears the input, emails a new code (old one stops working), restarts the 5-minute timer. **30-second cooldown**: the button shows "Resend OTP (25s)" and is disabled; the backend also refuses (429) if the last code is under 30 s old. Only works if the user got a code in the last 30 minutes (400 otherwise).
 9. **Expired code typed in** → `/verify-code` returns **410** → the app shows the same expired message + Resend button.
 
+
 ### Pop-ups (`app.js`) ✅
 - A pop-up closes **only** from its X / Cancel buttons (`data-close`), after a successful save, or a tap on the **dark overlay itself** (`event.target === overlay`, and the press must also have *started* on the overlay).
 - There are **no** blur / focusout / resize handlers, so the phone keyboard opening (which resizes the screen) can't close it. The box has `max-height: 90dvh; overflow-y: auto`, so it scrolls instead.
 - Every button that isn't "Save" has `type="button"`, so it never submits a form.
 
-### Money tab: expenses + overall budget ✅
-- Tap the **Expenses** card → pop-up with **Add expense** (amount, category, description, date = today) or **Set budget** (one monthly budget for ALL expenses).
+### Money tab ✅ (restored full version — see Section 4, Tab 1)
+- Uses GET `/api/summary`, `/api/expenses`, `/api/expenses/quick`, `/api/income`; POST/PUT/DELETE expenses + income; PUT `/api/budgets` (`monthly_limit: null` removes). Targets uses `/api/savings`, `/api/savings/safety-net/add-money`, `/api/goals` (+ `/{id}/add-money`). All checked against the backend routes.
+- *Old notes from the simple version (replaced):*
+- Tap the **Expenses** card → pop-up with **Add expense** (amount, category, description, date = today) or **Set budget** (category + monthly limit → PUT `/api/budgets`).
+- Budget card: **overall budget = sum of all category budgets** (GET `/api/budgets`); **spent = everyday + fixed bills** of this month (GET `/api/expenses` → `everyday` + `fixed`).
 - After a save the pop-up closes and the list, total and budget bar reload at once.
 - Budget card: "Spent Rs X of Rs Y" + bar: **green** < 75%, **orange** 75–100%, **red** over budget + "⚠ Over budget by Rs X". No budget yet → "no budget set yet".
 - Amounts are checked in `money-tab.js` (empty / 0 / negative / > 10,000,000 → message) and again by Pydantic on the backend (422).
 
+### Tab 4: Loans ✅ (section 1 client-side; section 2 uses POST /api/loans/predict)
+- **My current loan:** amount left, rate (% a year), monthly repayment, optional extra per month + start date → months/years to repay, payoff date (from the start date, or today if empty/past), total interest, total paid. Month-by-month amortisation (monthly compounding). Payment ≤ first month's interest → warning; > 100 years → warning. Graphs: balance line (+ "with extra" line), donut loan vs interest.
+- **Can I afford a loan? (How much can I borrow?):** income, expenses (both pre-filled from this month's /api/summary when the Loans tab opens), existing repayments (pre-filled from section 1), credit score (406–850), age (18–100), rate, term (1–30 yrs) → POST `/api/loans/predict`. Backend: model features in order `monthly_income, monthly_expenses, existing_debt_payment, credit_score, age, debt_to_income_ratio`, where the model's ratio = (expenses + existing debt) ÷ income as a fraction, rounded to 3 dp (that's how the training CSV defines it). The *displayed* debt-to-income = existing repayments ÷ income (fraction) → verdict: <30% "Good to borrow", 30–40% "Borrow carefully", >40% "Not recommended right now". Standard rule: payment = 40% income − existing repayments (min 0) → present value at the sent rate/term (default 10%, 5 yrs); ignores expenses and credit score. Prediction clamped ≥ 0. Model missing/broken → logged error, `source: "formula"` and predicted = rule amount. Frontend shows the AI estimate, DTI bar (green/amber/red), verdict, rule comparison, EMI for the AI amount (`repaymentFor`), graph of rule max loan for 1–25 yrs vs a flat AI-estimate line.
+- Money shown as "Rs 12,345" (whole rupees); empty / negative / text inputs → friendly message. Tests: `node --test tests/frontend`.
+
+### Languages (`i18n.js`, `lang/*.json`, `backend/errors.py`) ✅
+- **Start language:** saved choice (`localStorage "language"`, in try/catch) → else phone language (`fr…` → French) → else English. `<html lang>` follows (`en` / `fr` / `mfe`).
+- **Loading:** `i18n.js` fetches `lang/en.json` (always, it's the fallback) + the chosen language; `I18n.ready` is a promise. `app.js` (`startApp`) and `login.js` (`startLoginPage`) `await I18n.ready` before drawing anything; the page is hidden (`.i18n-loading`) until then. The service worker caches the 3 JSON files (offline works).
+- **`t("key", {name: …})`** → text in the current language, English if missing, `""` if unknown (never the raw key / "undefined"). `{name}` placeholders are filled from the object.
+- **HTML:** `data-i18n="key"` (text), `data-i18n-placeholder`, `data-i18n-aria` (aria-label), `data-i18n-params='{"n":1}'`. Text next to an input inside a `<label>` is wrapped in `<span data-i18n>`.
+- **JS:** `t("key")` for built text; `setText(element, key, params)` for elements that should re-translate by themselves (titles, hints).
+- **Switching:** `setLanguage(code)` → re-applies every `data-i18n`, then fires `i18n:change`; `app.js` redraws the open tab (`redrawMoneyTab` incl. the open category pop-up, `loadTargetsTab`, `redrawLoans` incl. graph labels); `login.js` redraws the meter / code timer.
+- **Kept English on purpose:** values sent to the API (categories, income types, `On track` status, bar labels "Safety net"/"Free") — only their DISPLAY is translated (`tCategory`, `tIncomeType`, `STATUS_KEYS`, `PRIORITY_KEYS`). Money is always "Rs 12,345". Dates use `Intl.DateTimeFormat` (`en-MU`, `fr-MU`; Kreol uses French month names).
+- **Backend error codes:** routes raise `AppError(404, "GOAL_NOT_FOUND", "Goal not found.")`; Pydantic 422 errors get a code from the field name (`FIELD_CODES` in `errors.py`, e.g. amount → `INVALID_AMOUNT`). Reply: `{"detail": <English message or the old Pydantic list>, "code": "...", "params": {...}}`. `readErrorMessage` (api.js) / `readMessage` (login.js) show `t("error.<CODE>")` (or `auth.<CODE>` for good news) and fall back to `detail`. The backend never translates.
+- **Add a new string:** add the key to `en.json`, `fr.json` AND `mfe.json` (the tests fail if one is missing or empty), then use `data-i18n="key"` or `t("key")`.
+- **Add a new language:** copy `en.json` to `lang/<code>.json` and translate it; add the code to `LANGUAGES`, `SHORT_NAMES`, `LOCALES` in `i18n.js`; add the file to `APP_FILES` in `service-worker.js` (bump `CACHE_NAME`); add it to the list in `tests/frontend/i18n.test.js`.
+
 ### Every money route
 - Reads the session cookie → finds the user → **401 if not logged in** (the app then goes to `login.html`).
-- Every row has a `user_id`. Every SQL query has `WHERE user_id = ?`, so you can only see or change **your own** rows (someone else's id → 404).
+- Every row has a `user_id`. Every ORM query filters by the logged-in user's id, so you can only see or change **your own** rows (someone else's id → 404, a non-UUID id → 422).
 - Amounts must be **more than 0 and at most 10,000,000**, rounded to 2 decimals. Dates are `YYYY-MM-DD`, months `YYYY-MM`.
 
 ### Fixed lists (`categories.py`) 🆕
@@ -154,6 +201,10 @@ tests/backend/                  ← pytest + FastAPI TestClient (temporary datab
 
 ## 4. Screens 🆕
 
+**Design (current):** dark blue banking "glass" theme. CSS variables at the top of `style.css`: navy gradient background `#070d1f`→`#0d1a3a` with blue/cyan glows, frosted translucent cards (`backdrop-filter: blur`), glowing blue gradient buttons, cyan→blue progress bars, floating frosted 4-tab bar, dark bottom sheets. Green `#3ddc84` = money in, orange `#ff9a4a` = money out. Chart.js in blue/cyan/green/orange with light text. Manifest + meta theme `#070d1f`; SW cache `my-money-v9`. Inputs 16px, tap targets ≥ 44px.
+
+*Previous design (replaced):* light, clean theme. CSS variables at the top of `style.css`: grey background `#f3f5f8`, white 18px-rounded cards with thin `#e6e9ef` border, dark `#15171d` budget card, solid royal-indigo `#2f3fbf` buttons/links, grey segmented tabs with white active pill, green in `#1e8e4f` / orange out `#e0650b`, text `#1b1d24`, muted `#6b7280`, light-indigo tip boxes. White floating tab bar, light bottom-sheet pop-ups, Chart.js in indigo/green/orange. Manifest + meta theme `#F3F5F8`; SW cache `my-money-v7`.
+
 Colours: background `#F6F7F9`, white cards (20px corners), dark summary card `#14161A`, active tab blue `#2F4BC0`.
 **Income = green `#237032` with "+"**, **expenses = orange `#A34A00` with "−"** — everywhere.
 Fonts: **Space Grotesk** (headings), **Inter** (text), from Google Fonts. Every button is at least **44px** tall.
@@ -164,7 +215,7 @@ A small **Log out** button sits at the top right of each tab.
 - **Dark card:** big "Left to spend this month"; small In (+green) · Out (−orange) · Saved; Needs/Wants/Savings bar + "aim 50 · 30 · 20".
 - Switch **[Money in] [Money out]** — Money out shows first.
 - **Money out:**
-  1. *Everyday spending* — mic button, "+ Add expense", Quick add chips ("Bus Rs 38"), one row per category: spent / budget + bar. Over → orange-red bar + "⚠ Over budget by Rs X". No budget → spent + "Set budget" link (opens a small box to type the limit).
+  1. *Everyday spending* — mic button, "+ Add expense", Quick add chips ("Bus Rs 38"), one row per category: spent / budget + bar. Over → orange-red bar + "⚠ Over budget by Rs X". No budget → spent + "Set budget" link. Bar colour (budget-calc.js): blue < 80%, amber 80–100%, red > 100%. **Tap a row** (or "Set budget"/"Edit") → category pop-up: month, "Rs X of Rs Y", bar, "Rs Z left"/"Rs Z over budget", Budget box + Save (empty = remove), Add expense (amount, note, date = today, "Repeats every month"), list of this month's expenses in that category (fixed bills after, marked "Every month"); tap one → edit in the same form or Delete (confirm). After every save the whole tab reloads (summary card, rows, recent) and the pop-up redraws.
   2. *Fixed monthly* — number of bills, total, bill names as small tags, "View or edit bills" → full list (edit / delete).
   3. *Recent* — last 3 expenses of the month + "See all" → full list of the month (edit / delete).
 - **Money in:**
@@ -181,7 +232,9 @@ A small **Log out** button sits at the top right of each tab.
 4. **Goals** + "+ New goal": name, deadline, priority, progress bar, "saved of target", "Needs Rs X a month", tag (On track / Needs more / Done), "+ Add money".
 5. **Warning box** when goals need more than the saving target (logic step 12).
 
-### Tab 3: Arcade
+### Tab 3: Loans — see "Tab 4: Loans" in Section 3.
+
+### Tab 4: Arcade
 "Coming soon" card ("Challenges and mini-games to help you hit your goals will live here.") + 4 dashed boxes [Game 1]–[Game 4].
 
 ---
@@ -197,7 +250,7 @@ A small **Log out** button sits at the top right of each tab.
  │ api.js ── talks to backend    │  /api/…  │  goals, voice                │
  │ voice.js ── microphone        │◄─────────┼──    ▼                       │
  │ service-worker (offline)      │   JSON   │  money.py, expense_parser.py │
- │                               │          │  database.py ──► finance.db  │
+ │                               │          │  database.py ──► SQLite/PG   │
  │ Free browser feature:         │          │                              │
  │  • Web Speech API (mic)       │          │  routes/voice.py ────────────┼──► OpenAI (speech-to-text,
  └───────────────────────────────┘          │  .env (API keys live ONLY here)     only if the browser can't)
@@ -210,105 +263,61 @@ The browser **never** talks to OpenAI directly, and it never sees a key. It only
 
 ## 6. Data stored for each item
 
-Saved in **SQLite** (one file, `backend/finance.db`), the same database the login uses. Money tables are created in `database.py` next to the login tables. **Every money table has `user_id`.**
+One database, read with **SQLAlchemy** (ORM) from `DATABASE_URL` in `.env`: **SQLite** file `backend/app.db` while developing (the default), **PostgreSQL** (Supabase / Neon) in production — the same code works on both. Tables live in `models.py` (bottom); they are created and changed by **Alembic** migrations in `backend/migrations/versions/` (the app runs `alembic upgrade head` when it starts).
 
-### User ✅
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 1 | created automatically |
-| full_name | text | "Asha Rao" | 1–100 characters |
-| email | text | "asha@gmail.com" | unique, always lowercase |
-| password_hash | text | "$2b$14$…" | bcrypt hash, never the real password |
-| failed_attempts | number | 0–3 | wrong passwords in a row |
-| is_locked | 0 / 1 | 0 | 1 after 3 wrong passwords |
-| created_at | unix time | 1763020800 | set automatically |
+**Rules for every table**
+- **ids are UUIDs** (random, e.g. `3f2b…`), never 1, 2, 3. The API sends them as text.
+- **Money is whole cents** (`BIGINT`): Rs 150.50 → `15050`. The API still takes and returns **rupees** (converted at the edge with `to_cents()` / `to_rupees()` in `money.py`), so the frontend didn't change.
+- **CHECK constraints**: amounts can't be negative; `kind` = need/want; `frequency` = monthly/weekly/one-off; `priority` 1–3; `email` must be lowercase.
+- **`user_id` → `users.id` ON DELETE CASCADE**: deleting a user deletes all their rows (SQLite needs `PRAGMA foreign_keys=ON`, switched on in `database.py` for every connection).
+- **Indexes** on every `user_id` and every date column (`date`, `deadline`, `start_date`).
+- **Only ORM queries** (parameterized), never SQL built from strings. Every money query filters by the logged-in user's id (`get_user_rows`, `find_user_row` in `database.py`) — someone else's id → 404.
+- **Never stored:** card numbers, bank account numbers, plain-text passwords or codes (bcrypt / SHA-256 hashes only).
 
-### Login code (otp_codes) ✅
-| Field | Notes |
-|---|---|
-| id, user_id | which user the code is for |
-| code_hash | SHA-256 of the 6-digit code (the real code is only in the email) |
-| expires_at | 5 minutes after it was made |
-| tries | wrong guesses so far (max 5) |
-| used | 1 = used, replaced or blocked |
-| created_at | used for the 60-second resend wait |
+```
+                         users  (login data only)
+                         id UUID PK · email (unique, lowercase) · password_hash
+                         failed_attempts · is_locked · created_at
+                                         │  user_id FK, ON DELETE CASCADE
+   ┌──────────┬───────────┬──────────┬───┴──────┬──────────┬──────────┬──────────────────┬──────────────┐
+   ▼          ▼           ▼          ▼          ▼          ▼          ▼                  ▼              ▼
+profiles  otp_codes   sessions    income    expenses   budgets  savings_settings  savings_goals ◄─┐ deposits
+(1 per    (many)      (many)      (many)    (many)     (1 per   (1 per user)      (many)          │ (many)
+ user)                                                 category)                                  └─ goal_id FK
+                                                                                                   CASCADE (empty
+                                                                                                   = safety net)
+```
 
-### Session ✅
-| Field | Notes |
-|---|---|
-| token_hash | SHA-256 of the cookie value |
-| user_id | who is logged in |
-| expires_at | 7 days after login |
+| Table | Columns (money = `_cents`) | Notes |
+|---|---|---|
+| `users` | id, email, password_hash, failed_attempts, is_locked, created_at | locked after 3 wrong passwords |
+| `profiles` | id, user_id (unique), full_name, date_of_birth (optional), phone (optional), updated_at | personal details, apart from login data |
+| `otp_codes` | id, user_id, code_hash, expires_at, attempts, used, created_at | SHA-256 of the 6-digit code; 5 min; dies after 5 wrong guesses; created_at → 30 s resend wait |
+| `sessions` | token_hash (PK), user_id, expires_at | SHA-256 of the cookie value; 7 days |
+| `income` | id, user_id, name, source, amount_cents, frequency, date, created_at | `source` = Salary/Allowance/… (API field `type`) |
+| `expenses` | id, user_id, amount_cents, category, kind, description, date, is_fixed, source, created_at | `description` = API field `note`; `source` = typed/voice/quick; `is_fixed` = repeats monthly |
+| `budgets` | id, user_id, category, amount_cents, period ("monthly"), start_date | one per user per category (API field `monthly_limit`) |
+| `savings_settings` | id, user_id (unique), bank_balance_cents, monthly_target_cents (empty = 20% of regular income), safety_net_saved_cents | made the first time it's needed |
+| `savings_goals` | id, user_id, name, target_cents, saved_cents, deadline, priority, created_at | API fields `target_amount`, `saved_amount` |
+| `deposits` | id, user_id, goal_id (empty = safety net), amount_cents, date, created_at | deleting a goal deletes its deposits |
 
-### Income (`income`) 🆕
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 1 | created automatically |
-| user_id | number | 1 | owner |
-| name | text | "Part-time job" | 1–60 characters |
-| type | text | "Salary" | one of the income types |
-| amount | number | 8000.00 | > 0, ≤ 10,000,000 |
-| frequency | text | "monthly" | monthly / weekly / one-off |
-| date | date | 2026-11-01 | start date (repeating) or date received (one-off) |
-
-### Expense (`expenses`) 🆕
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 7 | created automatically |
-| user_id | number | 1 | owner |
-| amount | number | 245.00 | > 0, ≤ 10,000,000 |
-| category | text | "Food & drinks" | one of the 9 categories |
-| kind | text | "want" | need / want (default comes from the category) |
-| note | text | "lunch" | optional, up to 100 characters |
-| date | date | 2026-11-13 | defaults to today; for a fixed bill = the first month it counts |
-| is_fixed | 0 / 1 | 0 | 1 = repeats every month (fixed bill) |
-| source | text | "typed" | typed / voice / quick |
-
-### Budget (`budgets`) 🆕 — replaces the old planned Budget table
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 1 | created automatically |
-| user_id | number | 1 | owner |
-| category | text | "Food & drinks" | one budget per user per category |
-| monthly_limit | number | 3000.00 | > 0; the same limit every month |
-
-### Overall budget (`overall_budget`) ✅
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| user_id | number | 1 | owner (also the key) — one row per user |
-| monthly_limit | number | 8000.00 | > 0, ≤ 10,000,000; one budget for ALL expenses, same every month |
-
-### Savings (`savings`) 🆕 — one row per user, made the first time it's needed
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| user_id | number | 1 | owner (also the key) |
-| bank_balance | number | 12000.00 | ≥ 0, the user can type it in |
-| monthly_target | number or empty | 3700.00 | empty = use 20% of regular income |
-| safety_net_saved | number | 4000.00 | grows with safety-net deposits |
-
-### Goal (`goals`) 🆕
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 2 | created automatically |
-| user_id | number | 1 | owner |
-| name | text | "New phone" | 1–60 characters |
-| target_amount | number | 15000.00 | > 0 |
-| saved_amount | number | 4500.00 | starts at 0; never above target |
-| deadline | date | 2027-03-01 | required (needed for "Needs Rs X a month") |
-| priority | number | 1 | 1 = High, 2 = Medium, 3 = Low |
-
-### Deposit (`deposits`) 🆕
-| Field | Type | Example | Notes |
-|---|---|---|---|
-| id | number | 5 | created automatically |
-| user_id | number | 1 | owner |
-| goal_id | number or empty | 2 | empty = safety net |
-| amount | number | 500.00 | > 0 |
-| date | date | 2026-11-13 | today |
-
-Deleting a goal deletes its deposits too.
+`created_at` is used to keep "newest first" order (UUIDs have no order). The old `overall_budget` table is gone (not used by the current routes).
 
 **Calculated, not stored** (worked out in `money.py` each time): monthly income, spent, saved, left to spend, the 3 percentages, category spending, monthly saving target (when empty), safety net target, goal needs-per-month and status, quick-add chips.
+
+### Migrations (Alembic)
+From the `backend` folder:
+```bash
+venv\Scripts\alembic upgrade head                                  # create / update the tables (the app also does this on start)
+venv\Scripts\alembic revision --autogenerate -m "what changed"     # after changing a table in models.py: makes a new migration file
+venv\Scripts\python migrate_old_db.py                              # ONE TIME: copy users + their data from the old finance.db
+```
+`migrate_old_db.py` reads the old file read-only, gives everyone new UUIDs, converts rupees → cents, and skips emails that are already there (safe to run twice). Login codes and sessions are not copied (users just log in again).
+
+### Switching to PostgreSQL (Supabase / Neon)
+1. Create a project → copy the **connection string** (Supabase: Project Settings → Database → URI; Neon: Dashboard → Connection string).
+2. In `backend/.env`: `DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require` (`postgres://…` also works; `database.py` switches it to the `psycopg` driver).
+3. `venv\Scripts\alembic upgrade head` (or just start the app), then optionally `venv\Scripts\python migrate_old_db.py`.
 
 ### API addresses
 All money routes need you to be logged in (401 otherwise).
@@ -320,21 +329,20 @@ All money routes need you to be logged in (401 otherwise).
 | POST `/api/auth/send-login-code` ✅ | locked account → email a code |
 | POST `/api/auth/resend-code` ✅ | "Resend OTP": new code for the same email (429 within 30 s of the last one) |
 | POST `/api/auth/verify-code` ✅ | check the code → log in (+ unlock) → set cookie (410 = code expired) |
-| GET `/api/auth/me` ✅ | who is logged in (401 if nobody) |
+| GET `/api/auth/me` ✅ | who is logged in + saved `language` (null if never set) (401 if nobody) |
+| PUT `/api/auth/language` ✅ | `{language: en/fr/mfe}` saved on `profiles.language` so it follows the user across devices; `app.js` applies it after `/me` and saves each switch (`saveMyLanguage` in api.js, silent on failure); login page stays localStorage-only |
 | POST `/api/auth/logout` ✅ | log out |
 | GET `/api/summary?month=YYYY-MM` 🆕 | income, spent, saved, left to spend, %s, category rows (spent / budget / over_by), fixed bills, last 3 expenses |
 | GET `/api/income?month=YYYY-MM` 🆕 | regular incomes + one-offs of that month |
 | POST `/api/income` 🆕 | add an income |
 | PUT / DELETE `/api/income/{id}` 🆕 | edit / delete an income |
-| GET `/api/expenses?month=YYYY-MM` ✅ | all expenses of that month + total (🆕 fixed bills) |
+| GET `/api/expenses?month=YYYY-MM&category=…` ✅ | `{month, everyday: [...], fixed: [...]}` (no total: the frontend adds it up); optional `category` filter (unknown → 422) |
 | POST `/api/expenses` ✅ | add an expense `{amount, category, note, date}` (date empty = today) |
-| GET `/api/budget?month=YYYY-MM` ✅ | overall budget `{monthly_limit, spent, over_by}` (limit null = not set) |
-| PUT `/api/budget` ✅ | set the overall monthly budget `{monthly_limit}` |
 | PUT / DELETE `/api/expenses/{id}` 🆕 | edit / delete an expense |
 | GET `/api/expenses/quick` 🆕 | top 4 quick-add chips |
 | POST `/api/expenses/quick` 🆕 | log a chip again with today's date |
-| GET `/api/budgets` 🆕 | the user's budgets |
-| PUT `/api/budgets` 🆕 | set one category's limit `{category, monthly_limit}` (empty limit = remove it) |
+| GET `/api/budgets?month=YYYY-MM` ✅ | the user's budgets (one per category, same every month; `month` optional). `/api/budget` (GET/PUT) = hidden alias for old cached clients |
+| PUT `/api/budgets` ✅ | set one category's limit `{category, monthly_limit}` (empty limit = remove it) |
 | GET `/api/savings` 🆕 | bank balance, monthly target (+ this month's progress), safety net target / saved / %, bank bar segments |
 | PUT `/api/savings` 🆕 | update bank balance and/or monthly target |
 | POST `/api/savings/safety-net/add-money` 🆕 | add money to the safety net |
@@ -343,6 +351,7 @@ All money routes need you to be logged in (401 otherwise).
 | PUT / DELETE `/api/goals/{id}` 🆕 | edit / delete a goal |
 | POST `/api/goals/{id}/add-money` 🆕 | add money to a goal |
 | POST `/api/voice/parse-expense` 🆕 | text → suggested `{amount, category, kind, note}` (not saved) |
+| POST `/api/loans/predict` ✅ | `{monthly_income, monthly_expenses, existing_debt_payment, credit_score, age, interest_rate?, years?}` → `{predicted_max_loan, formula_max_loan, formula_monthly_payment, debt_to_income_ratio, verdict, source}` |
 | POST `/api/speech-to-text` 🆕 | audio clip → text (backup for phones without Web Speech) |
 
 ---
@@ -389,6 +398,7 @@ Text-to-speech and translation (OpenAI or Google Cloud / DeepL) are **later** fe
 GMAIL_ADDRESS=
 GMAIL_APP_PASSWORD=
 OPENAI_API_KEY=
+DATABASE_URL=sqlite:///./app.db
 ```
 
 ---
@@ -411,7 +421,7 @@ From the project folder (the one with `backend/` and `tests/`):
 ```bash
 backend\venv\Scripts\python -m pytest tests/backend -q      # Mac/Linux: backend/venv/bin/python -m pytest tests/backend -q
 ```
-Tests use a temporary database and a fake email sender, so they never touch `finance.db` or send real emails.
+Tests use a temporary database and a fake email sender, so they never touch `app.db` or send real emails.
 
 ### On your phone
 Phones only allow the **microphone, service worker (offline) and "Add to Home Screen"** on **https://** addresses. Plain `http://192.168.x.x` opens the app, but those features stay off.

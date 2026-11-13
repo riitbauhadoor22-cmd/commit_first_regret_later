@@ -1,16 +1,24 @@
 // service-worker.js — keeps a copy of the app's files on the phone, so the app still opens with no internet.
 // It always tries the internet first (so you get the newest version), and uses the saved copy only when offline.
 // API calls (/api/...) are never saved here: money data always comes fresh from the server.
+// Other websites (e.g. the Chart.js CDN) are not cached either: offline, the Loans graphs are simply hidden.
 
-const CACHE_NAME = "my-money-v4"; // change the number when you want every phone to start fresh
+const CACHE_NAME = "my-money-v11"; // change the number when you want every phone to start fresh
 const APP_FILES = [
   "index.html",
   "login.html",
   "style.css",
+  "i18n.js",
+  "lang/en.json", // languages: cached so they work offline
+  "lang/fr.json",
+  "lang/mfe.json",
   "api.js",
   "app.js",
+  "budget-calc.js",
   "money-tab.js",
   "targets-tab.js",
+  "loan-calc.js",
+  "loans-tab.js",
   "login.js",
   "manifest.json",
   "icons/icon-192.png",

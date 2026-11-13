@@ -5,3 +5,7 @@ __pycache__/
 *.db
 CLAUDE.md
 .claude/agents/
+# 58 MB trained loan model: too big for git, share it separately
+backend/AI_model/
+
+*.db-journal

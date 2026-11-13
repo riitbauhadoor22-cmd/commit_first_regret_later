@@ -30,6 +30,16 @@ def to_money(number):
     return round(number + 0.0, 2)
 
 
+def to_cents(rupees):
+    """Rupees -> whole cents for the database: 150.5 -> 15050."""
+    return int(round(rupees * 100))
+
+
+def to_rupees(cents):
+    """Whole cents from the database -> rupees for the API: 15050 -> 150.5."""
+    return cents / 100
+
+
 def get_month_of(date_text):
     """'2026-11-13' -> '2026-11'"""
     return date_text[:7]
@@ -193,7 +203,7 @@ def get_needs_per_month(goal, today):
 
 def sort_goals_by_priority(goals):
     """High priority first; same priority → earlier deadline first."""
-    return sorted(goals, key=lambda g: (g["priority"], g["deadline"], g["id"]))
+    return sorted(goals, key=lambda g: (g["priority"], g["deadline"], g["created_at"]))
 
 
 def get_goal_statuses(goals, monthly_target, today):
@@ -256,11 +266,11 @@ def get_quick_add(expenses, today):
             groups[key] = {"count": 0, "latest": e}
         group = groups[key]
         group["count"] += 1
-        if (e["date"], e["id"]) > (group["latest"]["date"], group["latest"]["id"]):
+        if (e["date"], e["created_at"]) > (group["latest"]["date"], group["latest"]["created_at"]):
             group["latest"] = e
 
     ranked = sorted(groups.values(),
-                    key=lambda g: (g["count"], g["latest"]["date"], g["latest"]["id"]), reverse=True)
+                    key=lambda g: (g["count"], g["latest"]["date"], g["latest"]["created_at"]), reverse=True)
     chips = []
     for group in ranked[:QUICK_ADD_COUNT]:
         latest = group["latest"]
@@ -284,7 +294,7 @@ def get_summary(incomes, expenses, deposits, budgets, month):
     needs = get_total_by_kind(expenses, month, "need")
     wants = get_total_by_kind(expenses, month, "want")
     fixed = get_fixed_bills(expenses, month)
-    recent = sorted(get_everyday_expenses(expenses, month), key=lambda e: (e["date"], e["id"]), reverse=True)
+    recent = sorted(get_everyday_expenses(expenses, month), key=lambda e: (e["date"], e["created_at"]), reverse=True)
     return {
         "month": month,
         "income": income,

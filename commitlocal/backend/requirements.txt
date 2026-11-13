@@ -3,5 +3,12 @@ uvicorn
 bcrypt
 python-dotenv
 email-validator
-pytest
+python-multipart
 httpx
+pytest
+sqlalchemy
+alembic
+psycopg[binary]
+scikit-learn==1.9.1  # must match the version the loan model was saved with
+pandas
+joblib
