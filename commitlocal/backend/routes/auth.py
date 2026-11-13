@@ -55,6 +55,14 @@ def get_current_user(request):
             "WHERE token_hash = ? AND expires_at > ?", (hash_text(token), int(time.time()))).fetchone()
 
 
+def require_user(request: Request):
+    """Used by every money route: the logged-in user's id, or a 401 error if nobody is logged in."""
+    user = get_current_user(request)
+    if user is None:
+        raise HTTPException(401, "Please log in first.")
+    return user["id"]
+
+
 # ===== ROUTES =====
 @router.post("/register", status_code=201)
 def register(form: RegisterForm):

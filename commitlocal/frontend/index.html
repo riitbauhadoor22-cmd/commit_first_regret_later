@@ -1,18 +1,438 @@
 <!DOCTYPE html>
-<!-- index.html — the main app page. For now it greets the logged-in user and has a Log out button. -->
+<!-- index.html — the app: 3 tab pages (Money, Targets, Arcade), the bottom tab bar,
+     and the pop-up screens (Add expense, Set budget, lists). The JS files fill in the numbers. -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>My Money</title>
+  <meta name="theme-color" content="#2F4BC0">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="My Money">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
-  <main class="card">
-    <h1 id="greeting">Loading…</h1>
-    <p>Budgets, expenses and goals are coming soon.</p>
-    <button id="logout-btn" class="btn" type="button">Log out</button>
+<body class="app">
+
+  <!-- ===================== TAB 1: MONEY ===================== -->
+  <main id="page-money" class="page">
+    <header class="page-head">
+      <h1>Money</h1>
+      <button class="link-btn logout-btn" type="button">Log out</button>
+    </header>
+
+    <div class="month-picker">
+      <button id="month-prev" class="round-btn" type="button" aria-label="Previous month">‹</button>
+      <span id="month-label" aria-live="polite"></span>
+      <button id="month-next" class="round-btn" type="button" aria-label="Next month">›</button>
+    </div>
+
+    <!-- Dark summary card -->
+    <section class="card dark" aria-label="This month">
+      <div>
+        <p class="label">Left to spend this month</p>
+        <p id="left-to-spend" class="big-number">…</p>
+      </div>
+      <div class="stats">
+        <div class="stat"><p class="label">In</p><p id="sum-in" class="value in"></p></div>
+        <div class="stat"><p class="label">Out</p><p id="sum-out" class="value out"></p></div>
+        <div class="stat"><p class="label">Saved</p><p id="sum-saved" class="value saved"></p></div>
+      </div>
+      <div class="split-bar" aria-hidden="true">
+        <span id="split-needs" class="split-needs"></span>
+        <span id="split-wants" class="split-wants"></span>
+        <span id="split-savings" class="split-savings"></span>
+      </div>
+      <p id="split-legend" class="split-legend"></p>
+    </section>
+
+    <!-- Money in / Money out switch -->
+    <div class="switch" role="tablist" aria-label="Money in or out">
+      <button id="switch-in" type="button" role="tab" aria-selected="false">Money in</button>
+      <button id="switch-out" class="active" type="button" role="tab" aria-selected="true">Money out</button>
+    </div>
+
+    <!-- MONEY OUT view -->
+    <div id="view-out" class="stack">
+      <section class="card">
+        <div class="card-head">
+          <h2>Everyday spending</h2>
+          <div class="actions">
+            <button id="mic-btn" class="mic-btn" type="button" aria-label="Add an expense by voice">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+              </svg>
+            </button>
+            <button id="add-expense-btn" class="btn btn-small" type="button">+ Add expense</button>
+          </div>
+        </div>
+        <div id="quick-box" hidden>
+          <p class="small-title">Quick add</p>
+          <div id="quick-chips" class="chips"></div>
+        </div>
+        <div id="category-rows" class="cat-rows"></div>
+      </section>
+
+      <section class="card">
+        <h2>Fixed monthly</h2>
+        <p id="fixed-summary" class="muted"></p>
+        <div id="fixed-tags" class="tags"></div>
+        <button id="fixed-open" class="link-btn" type="button" style="align-self: flex-start;">View or edit bills</button>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Recent</h2>
+          <button id="see-all-btn" class="link-btn" type="button">See all</button>
+        </div>
+        <ul id="recent-list" class="item-list"></ul>
+      </section>
+    </div>
+
+    <!-- MONEY IN view -->
+    <div id="view-in" class="stack" hidden>
+      <section class="card">
+        <div class="card-head">
+          <h2>Regular income</h2>
+          <button id="add-income-btn" class="btn btn-small" type="button">+ Add income</button>
+        </div>
+        <ul id="regular-list" class="item-list"></ul>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>One-off this month</h2>
+          <button id="add-one-off-btn" class="link-btn" type="button">+ Add one-off</button>
+        </div>
+        <ul id="one-off-list" class="item-list"></ul>
+      </section>
+
+      <p class="tip">💡 You only add regular income once. After that it's added every month.</p>
+    </div>
   </main>
-  <script src="home.js"></script>
+
+  <!-- ===================== TAB 2: TARGETS ===================== -->
+  <main id="page-targets" class="page" hidden>
+    <header class="page-head">
+      <h1>Targets</h1>
+      <button class="link-btn logout-btn" type="button">Log out</button>
+    </header>
+
+    <!-- Dark card: money in the bank, split into safety net + goals + free -->
+    <section class="card dark" aria-label="Saved in your bank">
+      <div class="card-head">
+        <p class="label">Saved in your bank</p>
+        <button id="bank-edit-btn" class="link-btn on-dark" type="button">Update</button>
+      </div>
+      <p id="bank-balance" class="big-number">…</p>
+      <div id="bank-bar" class="split-bar" aria-hidden="true"></div>
+      <p id="bank-legend" class="split-legend"></p>
+    </section>
+
+    <!-- Monthly saving target + this month's progress -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Monthly saving</h2>
+        <button id="target-edit-btn" class="link-btn" type="button">Change</button>
+      </div>
+      <p id="target-amount" class="mid-number"></p>
+      <p id="target-note" class="muted"></p>
+      <div class="bar"><span id="target-bar"></span></div>
+      <p id="target-progress" class="muted"></p>
+    </section>
+
+    <!-- Safety net -->
+    <section class="card">
+      <div class="card-head">
+        <h2>Safety net</h2>
+        <button id="safety-add-btn" class="btn btn-small btn-light" type="button">+ Add money</button>
+      </div>
+      <p id="safety-text" class="muted"></p>
+      <div class="bar"><span id="safety-bar"></span></div>
+      <p id="safety-percent" class="muted"></p>
+    </section>
+
+    <!-- Goals -->
+    <div class="card-head goals-head">
+      <h2>Goals</h2>
+      <button id="new-goal-btn" class="btn btn-small" type="button">+ New goal</button>
+    </div>
+    <p id="goals-warning" class="warning-box" role="alert" hidden></p>
+    <div id="goal-list" class="stack"></div>
+  </main>
+
+  <!-- ===================== TAB 3: ARCADE (empty for now) ===================== -->
+  <main id="page-arcade" class="page" hidden>
+    <header class="page-head">
+      <h1>Arcade</h1>
+      <button class="link-btn logout-btn" type="button">Log out</button>
+    </header>
+
+    <section class="card dark">
+      <p class="label">Coming soon</p>
+      <h2 class="arcade-title">Games are on the way 🎮</h2>
+      <p class="arcade-text">Challenges and mini-games to help you hit your goals will live here.</p>
+    </section>
+
+    <div class="game-grid">
+      <div class="placeholder game-box">Game 1</div>
+      <div class="placeholder game-box">Game 2</div>
+      <div class="placeholder game-box">Game 3</div>
+      <div class="placeholder game-box">Game 4</div>
+    </div>
+  </main>
+
+  <!-- ===================== BOTTOM TAB BAR ===================== -->
+  <nav class="tabbar" aria-label="Tabs">
+    <button class="active" type="button" data-page="money" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2M3 10h18"/>
+      </svg>
+      Money
+    </button>
+    <button type="button" data-page="targets">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+      </svg>
+      Targets
+    </button>
+    <button type="button" data-page="arcade">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor"/><circle cx="18" cy="13.5" r="1" fill="currentColor"/>
+      </svg>
+      Arcade
+    </button>
+  </nav>
+
+  <!-- ===================== POP-UP: ADD / EDIT EXPENSE ===================== -->
+  <div id="sheet-expense" class="sheet" role="dialog" aria-modal="true" aria-labelledby="expense-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="expense-title">Add expense</h2>
+        <span></span>
+      </header>
+      <form id="expense-form" novalidate>
+        <label>Amount
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="expense-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
+          </span>
+        </label>
+        <button id="say-it-btn" class="btn btn-light" type="button" hidden>🎤 Say it</button>
+
+        <fieldset>
+          <legend>Category</legend>
+          <div id="category-grid" class="category-grid"></div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Need or want?</legend>
+          <div class="toggle">
+            <button class="choice" type="button" data-kind="need">Need</button>
+            <button class="choice" type="button" data-kind="want">Want</button>
+          </div>
+        </fieldset>
+
+        <label>Note <input id="expense-note" type="text" maxlength="100" placeholder="e.g. Lunch"></label>
+        <label>Date <input id="expense-date" type="date" required></label>
+        <label class="check"><input id="expense-fixed" type="checkbox"> Repeats every month (fixed bill)</label>
+
+        <p id="expense-error" class="message error" role="alert"></p>
+        <button id="expense-save" class="btn" type="submit">Save</button>
+        <button id="expense-delete" class="btn btn-danger" type="button" hidden>Delete expense</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: ADD / EDIT INCOME ===================== -->
+  <div id="sheet-income" class="sheet" role="dialog" aria-modal="true" aria-labelledby="income-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="income-title">Add income</h2>
+        <span></span>
+      </header>
+      <form id="income-form" novalidate>
+        <label>Name <input id="income-name" type="text" maxlength="60" placeholder="e.g. Part-time job" required></label>
+
+        <fieldset>
+          <legend>Type</legend>
+          <div id="income-type-grid" class="category-grid"></div>
+        </fieldset>
+
+        <label>Amount
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="income-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
+          </span>
+        </label>
+
+        <fieldset>
+          <legend>How often?</legend>
+          <div class="toggle three">
+            <button class="choice" type="button" data-frequency="monthly">Monthly</button>
+            <button class="choice" type="button" data-frequency="weekly">Weekly</button>
+            <button class="choice" type="button" data-frequency="one-off">One-off</button>
+          </div>
+        </fieldset>
+
+        <label><span id="income-date-label">Starts on</span> <input id="income-date" type="date" required></label>
+
+        <p id="income-error" class="message error" role="alert"></p>
+        <button id="income-save" class="btn" type="submit">Save</button>
+        <button id="income-delete" class="btn btn-danger" type="button" hidden>Delete income</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: BANK BALANCE ===================== -->
+  <div id="sheet-bank" class="sheet" role="dialog" aria-modal="true" aria-labelledby="bank-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="bank-title">Saved in your bank</h2>
+        <span></span>
+      </header>
+      <form id="bank-form" novalidate>
+        <label>How much savings do you have right now?
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="bank-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" required>
+          </span>
+        </label>
+        <p class="muted">Check your bank app and type the amount. Money you add to goals is added here automatically.</p>
+        <p id="bank-error" class="message error" role="alert"></p>
+        <button class="btn" type="submit">Save</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: MONTHLY SAVING TARGET ===================== -->
+  <div id="sheet-target" class="sheet" role="dialog" aria-modal="true" aria-labelledby="target-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="target-title">Monthly saving</h2>
+        <span></span>
+      </header>
+      <form id="target-form" novalidate>
+        <label>How much do you want to save each month?
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="target-input" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" required>
+          </span>
+        </label>
+        <p id="target-error" class="message error" role="alert"></p>
+        <button class="btn" type="submit">Save target</button>
+        <button id="target-default-btn" class="btn btn-light" type="button">Use 20% of my regular income</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: NEW / EDIT GOAL ===================== -->
+  <div id="sheet-goal" class="sheet" role="dialog" aria-modal="true" aria-labelledby="goal-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="goal-title">New goal</h2>
+        <span></span>
+      </header>
+      <form id="goal-form" novalidate>
+        <label>Name <input id="goal-name" type="text" maxlength="60" placeholder="e.g. New phone" required></label>
+        <label>Target
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="goal-target" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
+          </span>
+        </label>
+        <label>Deadline <input id="goal-deadline" type="date" required></label>
+        <fieldset>
+          <legend>Priority</legend>
+          <div class="toggle three">
+            <button class="choice" type="button" data-priority="1">High</button>
+            <button class="choice" type="button" data-priority="2">Medium</button>
+            <button class="choice" type="button" data-priority="3">Low</button>
+          </div>
+        </fieldset>
+        <p class="muted">High-priority goals get your monthly saving first.</p>
+        <p id="goal-error" class="message error" role="alert"></p>
+        <button id="goal-save" class="btn" type="submit">Save goal</button>
+        <button id="goal-delete" class="btn btn-danger" type="button" hidden>Delete goal</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: ADD MONEY (to a goal or the safety net) ===================== -->
+  <div id="sheet-money" class="sheet" role="dialog" aria-modal="true" aria-labelledby="money-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="money-title">Add money</h2>
+        <span></span>
+      </header>
+      <form id="money-form" novalidate>
+        <label>How much are you putting away?
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="money-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
+          </span>
+        </label>
+        <p id="money-hint" class="muted"></p>
+        <p id="money-error" class="message error" role="alert"></p>
+        <button id="money-save" class="btn" type="submit">Add money</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: SET BUDGET ===================== -->
+  <div id="sheet-budget" class="sheet" role="dialog" aria-modal="true" aria-labelledby="budget-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Cancel</button>
+        <h2 id="budget-title">Set budget</h2>
+        <span></span>
+      </header>
+      <form id="budget-form" novalidate>
+        <label>Most I want to spend each month
+          <span class="amount-box">
+            <span>Rs</span>
+            <input id="budget-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
+          </span>
+        </label>
+        <p id="budget-error" class="message error" role="alert"></p>
+        <button class="btn" type="submit">Save budget</button>
+        <button id="budget-remove" class="btn btn-danger" type="button" hidden>Remove budget</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: A LIST (See all / Fixed bills) ===================== -->
+  <div id="sheet-list" class="sheet" role="dialog" aria-modal="true" aria-labelledby="list-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close>Close</button>
+        <h2 id="list-title">All expenses</h2>
+        <span></span>
+      </header>
+      <section class="card">
+        <p id="list-hint" class="muted">Tap one to edit or delete it.</p>
+        <ul id="list-items" class="item-list"></ul>
+      </section>
+      <button id="list-add-btn" class="btn" type="button" style="width: 100%; margin-top: 12px;" hidden>+ Add fixed bill</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="api.js"></script>
+  <script src="app.js"></script>
+  <script src="money-tab.js"></script>
+  <script src="targets-tab.js"></script>
 </body>
 </html>
