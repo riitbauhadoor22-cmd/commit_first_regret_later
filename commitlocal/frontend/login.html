@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<!-- login.html — the Login / Register page, plus the "enter your code" and "account locked" screens. -->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Log in</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="card">
+    <h1>Welcome</h1>
+
+    <div class="tabs" role="tablist">
+      <button id="tab-login" class="tab active" type="button" role="tab" aria-selected="true">Log in</button>
+      <button id="tab-register" class="tab" type="button" role="tab" aria-selected="false">Register</button>
+    </div>
+
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+
+    <!-- LOGIN FORM -->
+    <form id="login-form">
+      <label>Email <input id="login-email" type="email" autocomplete="email" required></label>
+      <label>Password <input id="login-password" type="password" autocomplete="current-password" required></label>
+      <button class="btn" type="submit">Log in</button>
+    </form>
+
+    <!-- ACCOUNT LOCKED -->
+    <section id="locked-box" hidden>
+      <p>Too many wrong passwords. We can email you a code to log in instead.</p>
+      <button id="send-code-btn" class="btn" type="button">Send me a login code</button>
+    </section>
+
+    <!-- REGISTER FORM -->
+    <form id="register-form" hidden>
+      <label>Full name <input id="reg-name" type="text" autocomplete="name" maxlength="100" required></label>
+      <label>Email <input id="reg-email" type="email" autocomplete="email" required></label>
+      <label>Password <input id="reg-password" type="password" autocomplete="new-password" required></label>
+
+      <div class="meter" aria-hidden="true"><div id="meter-bar"></div></div>
+      <p id="meter-label" class="meter-label"></p>
+      <ul class="rules">
+        <li id="rule-length">At least 8 characters</li>
+        <li id="rule-upper">A capital letter (A–Z)</li>
+        <li id="rule-lower">A lowercase letter (a–z)</li>
+        <li id="rule-number">A number (0–9)</li>
+        <li id="rule-symbol">A symbol (like ! @ #)</li>
+      </ul>
+
+      <label>Confirm password <input id="reg-confirm" type="password" autocomplete="new-password" required></label>
+      <button class="btn" type="submit">Create account</button>
+    </form>
+
+    <!-- ENTER THE EMAILED CODE -->
+    <form id="code-form" hidden>
+      <p>Enter the 6-digit code we emailed you. It expires in 5 minutes.</p>
+      <label>Code
+        <input id="code-input" class="code-input" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" pattern="[0-9]{6}" required>
+      </label>
+      <button class="btn" type="submit">Verify</button>
+    </form>
+  </main>
+
+  <script src="login.js"></script>
+</body>
+</html>

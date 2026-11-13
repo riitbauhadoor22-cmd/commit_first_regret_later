@@ -1,0 +1,77 @@
+/* style.css — mobile-first styles: built for 360px phones first, with big buttons that are easy to tap. */
+
+/* ===== BASICS ===== */
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  padding: 16px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: #f4f6fb;
+  color: #1c1f26;
+}
+
+.card {
+  max-width: 420px;
+  margin: 24px auto;
+  padding: 20px;
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+}
+
+h1 { margin: 0 0 16px; font-size: 1.6rem; }
+
+/* ===== TABS ===== */
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab {
+  flex: 1;
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: #e8ebf3;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab.active { background: #3b5bdb; color: #fff; }
+
+/* ===== FORMS ===== */
+form, section { display: flex; flex-direction: column; gap: 12px; }
+label { display: flex; flex-direction: column; gap: 6px; font-weight: 600; }
+input {
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid #c7ccd8;
+  border-radius: 10px;
+  font-size: 16px; /* 16px or more stops iPhones zooming in on the box */
+}
+input:focus { outline: 3px solid #a5b4fc; border-color: #3b5bdb; }
+.code-input { font-size: 1.5rem; letter-spacing: 0.4em; text-align: center; }
+
+.btn {
+  min-height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: #3b5bdb;
+  color: #fff;
+  font-size: 1.05rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn:disabled { opacity: 0.6; }
+
+/* ===== MESSAGES ===== */
+.message { margin: 0 0 12px; min-height: 1.2em; color: #2e7d32; }
+.message.error { color: #c62828; }
+
+/* ===== PASSWORD STRENGTH METER ===== */
+.meter { height: 8px; background: #e8ebf3; border-radius: 4px; overflow: hidden; }
+#meter-bar { height: 100%; width: 0; transition: width 0.2s, background 0.2s; }
+.meter-label { margin: 0; font-weight: 700; min-height: 1.2em; }
+
+.rules { margin: 0; padding-left: 0; list-style: none; font-size: 0.95rem; color: #6b7280; }
+.rules li::before { content: "✗ "; color: #c62828; }
+.rules li.ok { color: #2e7d32; }
+.rules li.ok::before { content: "✓ "; color: #2e7d32; }

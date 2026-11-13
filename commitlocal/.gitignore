@@ -1,0 +1,7 @@
+# Files git should ignore
+.env
+venv/
+__pycache__/
+*.db
+CLAUDE.md
+.claude/agents/
