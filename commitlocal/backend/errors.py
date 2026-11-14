@@ -34,6 +34,7 @@ FIELD_CODES = {
     "topic": "INVALID_INPUT", "none": "INVALID_INPUT",  # "I have none" choices
     "today": "INVALID_DATE",  # dashboard: the phone's date
     "username": "INVALID_USERNAME", "phone": "INVALID_PHONE", "occupation": "INVALID_OCCUPATION",  # registration + Profile
+    "channel": "INVALID_CHANNEL",  # login: where to send the code
     "current_password": "INVALID_PASSWORD", "new_password": "INVALID_PASSWORD",  # Profile: change password / email
 }
 

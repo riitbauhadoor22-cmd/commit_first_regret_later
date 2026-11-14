@@ -38,11 +38,30 @@ To open it on a phone: `cloudflared tunnel --url http://localhost:8000` and open
 | Variable | Needed for |
 |---|---|
 | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | Emailing login codes (Gmail App Password) |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp login codes (optional) |
+| `WHATSAPP_ENABLED`, `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` (+ optional `WHATSAPP_API_VERSION`) | WhatsApp login codes through the Meta WhatsApp Cloud API (optional – see below) |
+| `DEMO_SHOW_OTP` | `false`! Only `true` for a demo: shows the login code on screen |
 | `GROQ_API_KEY` (+ optional `GROQ_MODEL`, `AI_*` limits) | AI financial insights (optional – without it the app gives "Quick insights (no AI)") |
 | `DATABASE_URL` | Leave empty for SQLite; set a PostgreSQL URL (Supabase/Neon) when deploying |
 
 Never commit `.env`.
+
+### WhatsApp login codes
+A login code is needed at **every** login (none at registration). Email-only accounts get it by email, phone-only accounts on WhatsApp, accounts with both get it by email and can switch on the code screen ("Send code by: Email / WhatsApp").
+
+**Set it up (Meta WhatsApp Cloud API, free test mode):**
+1. Create a Meta developer account at **developers.facebook.com** → **My Apps → Create app** → type **Business** (you also need a Meta Business portfolio; the wizard offers to make one).
+2. In the app dashboard, **add the WhatsApp product**. Meta gives you a free **test phone number** to send from.
+3. **WhatsApp → API Setup**: click **Generate access token** → this *temporary* token lasts less than 24 hours (fine to try it). For a token that doesn't expire: **Business Settings → Users → System users** → add a system user, give it your app and WhatsApp account (full control), **Generate token** with the permissions `whatsapp_business_messaging` + `whatsapp_business_management` (+ `business_management`).
+4. On the same API Setup page copy the **Phone number ID** (a long number shown under the test number — not the phone number itself).
+5. Under **To** → **Manage phone number list**: add the WhatsApp numbers that will log in (each gets a verification code on WhatsApp to confirm). *Test mode only sends to these numbers — Meta allows up to 5 (limit not re-checked in Meta's current docs).*
+6. **WhatsApp Manager → Message templates → Create template** → category **Authentication** → **Copy code** button (optionally the security sentence and an expiry footer, e.g. 5 minutes) → language e.g. English (`en_US`) → submit and **wait until it is Approved**. Note its exact name.
+7. `backend/.env`: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` (the template's language, default `en_US`), optional `WHATSAPP_API_VERSION` (default `v27.0`), then **`WHATSAPP_ENABLED=true`**. **Restart the server.**
+- What is sent: `POST https://graph.facebook.com/<version>/<PHONE_NUMBER_ID>/messages` with `Authorization: Bearer <token>` and a `template` message whose **body** parameter and **copy-code button** (`sub_type: url`, `index: "0"`) parameter are both the code — Meta's documented format for authentication templates.
+- Test-mode limits: only the numbers added in step 5 receive messages. Real users need a verified business, your own phone number and Meta's per-message pricing for authentication messages.
+- If something is wrong the user only sees the translated "We couldn't send the code on WhatsApp right now"; the **server log** shows Meta's status and error (e.g. `131030` = number not in the test list, `132001` = template name / language doesn't exist, `190` = token expired). The code and the token are never logged.
+- **`DEMO_SHOW_OTP`** must stay **`false`** outside a demo: `true` shows the code on the code screen (after a correct password), so the phone / inbox is no longer needed.
+
+Meta docs used: developers.facebook.com/documentation/business-messaging/whatsapp/get-started and .../whatsapp/templates/authentication-templates/copy-code-button-authentication-templates (checked Nov 2026).
 
 ## Tests
 From `commitlocal`:

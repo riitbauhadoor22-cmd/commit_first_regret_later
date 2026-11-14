@@ -238,6 +238,13 @@ legend { padding: 0; margin-bottom: 8px; font-weight: 600; font-size: 0.88rem; c
 .small { font-size: 0.8rem; margin: 0; line-height: 1.4; }
 .code-timer { margin: 0; text-align: center; color: var(--muted); }
 .code-timer.error { color: var(--danger); font-weight: 700; }
+/* Code screen: where the code went, the Email / WhatsApp switch, and the DEMO MODE box (DEMO_SHOW_OTP=true only) */
+.code-sent-to { margin: 0; text-align: center; font-weight: 600; overflow-wrap: anywhere; }
+.channel-switch { display: grid; gap: 6px; }
+.channel-switch .tabs { margin-bottom: 0; }
+.channel-switch .tab:disabled { cursor: not-allowed; }
+.channel-switch .tab:disabled:not(.active) { opacity: 0.55; }
+.demo-code-box { text-align: center; font-size: 1rem; letter-spacing: 0.04em; border-style: dashed; }
 
 /* ===== PASSWORD STRENGTH METER (login page) ===== */
 .meter { height: 6px; background: var(--track); border-radius: 999px; overflow: hidden; }

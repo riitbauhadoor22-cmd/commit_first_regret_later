@@ -33,8 +33,8 @@ commitlocal/
 │
 ├── frontend/                   ← everything the browser sees (HTML, CSS, plain JS)
 │   ├── index.html              ← ✅ 4 tab pages (Money, Dashboard, Loans, Profile), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists, change password, "Log out?")
-│   ├── login.html              ← ✅ Login (email OR phone + password) / Register (name, username, email and/or phone, password) tabs, "enter your code" box, "account locked" box
-│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, quick checks (username, email-or-phone, Mauritius phone), code countdown + Resend OTP, calls /api/auth/...
+│   ├── login.html              ← ✅ Login (email OR phone + password) / Register (name, username, email and/or phone, password) tabs, "enter your code" box (masked "Code sent on WhatsApp to …", Email / WhatsApp switch, "Send by email instead", DEMO MODE box), "account locked" box
+│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, quick checks (username, email-or-phone, Mauritius phone), code countdown + Resend OTP, where the code went (drawCodeDestination, switchChannel, offerEmailInstead, showDemoCode), calls /api/auth/...
 │   ├── theme.js                ← ✅ Brighter (default, shown as "Blue") / Darker (shown as "Dark") theme; follows changes made in another tab (storage event): localStorage "theme" → `data-theme="darker"` on <html>; loaded in <head> of both pages before anything is drawn
 │   ├── style.css               ← ✅ navy glass theme: EVERY colour is a CSS variable at the top (`:root` = Brighter, `:root[data-theme="darker"]` = Darker), cards, tab bar, Dashboard grid, jars, Profile, dialog (mobile-first, 360 / 390 / 430 px)
 │   ├── api.js                  ← ✅ callApi() + one small function per endpoint (getSummary, addExpense, getGoals…); throws a friendly Error; 401 → login page
@@ -69,7 +69,7 @@ commitlocal/
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), password_matches() (never crashes on > 72 bytes), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
-    ├── whatsapp_sender.py      ← ✅ sends the 6-digit code by WhatsApp (Twilio sandbox) to phone-only accounts; keys only in .env
+    ├── whatsapp_sender.py      ← ✅ sends the 6-digit code on WhatsApp (Meta WhatsApp Cloud API, authentication template + copy-code button); settings only in .env (WHATSAPP_*)
     ├── categories.py           ← ✅ CATEGORIES (+ default need/want) · 🆕 the other fixed lists: categories (+ default Need/Want), income types, frequencies
     ├── game/                   ← ✅ Budget Challenge logic (no UI, no routes): scenarios.py = config (levels, categories, min_amount, locked, events, points — edit here),
     │                             events.py (pick + effect), budget_engine.py (checks, totals in cents, over-income block), scoring.py (score + feedback)
@@ -127,12 +127,13 @@ tests/backend/test_optional_info.py ← ✅ the 12 "Permission Denied" cases: ea
 tests/backend/test_insights.py ← ✅ check-up maths, no personal text sent, cache reuse, page loads / tab changes / adding expenses never call Groq, outdated after changes, refresh, repeated clicks, cooldown, 2 requests at once → 1 call, daily limit, Groq error / bad JSON / 429 pause, no key, other users. Groq is ALWAYS faked (`fake_groq` fixture in conftest.py, autouse) — tests can never reach the real API
 tests/backend/test_inflation.py ← ✅ CPI builder (temp files), 12-month rate, projection + edge cases, endpoints (uses tests/fixtures/cpi_sample.csv = FAKE data)
 tests/backend/                  ← pytest + FastAPI TestClient (temporary database, fake email — never sends real emails)
-    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender, logged-in clients
+    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email + WhatsApp senders (`sent_codes`, `.where` = channel + address), WHATSAPP_ENABLED / DEMO_SHOW_OTP forced to false before .env is read, real Meta calls blocked, logged-in clients
     ├── test_otp.py             ← ✅ valid / expired / wrong code, hashes only, lowercase email, locked-account unlock
     ├── test_money.py           ← ✅ expenses (incl. bad amounts), cents storage, UUIDs, budgets, income, savings, goals
     ├── test_budgets_expenses.py ← ✅ budget set/update + /api/budget alias, bad input, add/edit/delete, month+category filter, other users
     ├── test_security_db.py     ← ✅ user A can't read/edit/delete user B's data, ON DELETE CASCADE, CHECK (no negative amounts)
-    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak; username rules + taken any case; email only / phone only / both / neither; phone normalised / invalid / taken), login (right / wrong / unknown; by phone; phone-only → code on WhatsApp (faked), resend on WhatsApp, Twilio keys missing → 503 PHONE_CODE_NOT_AVAILABLE, Twilio fails → 503 WHATSAPP_FAILED), /me, Gmail not set up → 503 (SMTP faked)
+    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak; username rules + taken any case; email only / phone only / both / neither; phone normalised / invalid / taken), login (right / wrong / unknown; by phone; phone-only → code on WhatsApp (faked), resend on WhatsApp, WhatsApp off → 503 WHATSAPP_UNAVAILABLE, fails → 503 WHATSAPP_FAILED, `can_use_email` only with an email), channel choice (email-only / phone-only / both → default email + switch to WhatsApp, channel the account lacks → 400 CHANNEL_NOT_AVAILABLE, masked `sent_to`), 6th code in an hour → 429 TOO_MANY_CODES, DEMO_SHOW_OTP off / on, /send-login-code identical reply for unknown / unlocked / locked, /me, Gmail not set up → 503 (SMTP faked)
+    ├── test_whatsapp_sender.py ← ✅ Meta request (URL with version + phone number id, Bearer header, `to` without +, template name / language, code in body + button), off / missing values → not configured (no HTTP call), 400 / 401 / 500 / timeout → one error, one call, code + token never logged, Meta error details logged
     ├── test_income_summary.py  ← ✅ regular vs one-off income per month, fixed bills, budget none/under/at/over, summary maths (In/Out/Saved/Left, 50·30·20 %)
     └── test_route_safety.py    ← ✅ reads EVERY /api route from main.app: 401 when logged out; no 500 on empty / negative / 1e20 / Infinity / NaN / text input
 tests/frontend/smoke.test.js    ← ✅ static checks: script order (theme.js first), tab bar = Money/Dashboard/Loans/Profile with no Targets/Arcade links, Log out asks first, every called function defined, every JS id exists in the HTML, manifest + icons, SW caches scripts, no API keys, .gitignore / .env.example
@@ -149,10 +150,11 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order (theme.js fi
 
 ### Login and registration ✅
 1. **Register** → **username** (the Full name field was removed; `full_name` is optional for old clients) (required: 3–30 letters / digits / `.` `_` `-`, saved lowercase, unique in any case → 409 `USERNAME_TAKEN`), **email and/or phone** (at least one → else 422 `EMAIL_OR_PHONE_REQUIRED`; email lowercase + unique → `EMAIL_TAKEN`; phone = Mauritius `+230` + 7 digits or 8 digits starting with 5, spaces / dashes removed, saved as `+230XXXXXXXX` in `profiles.phone`, unique → `PHONE_TAKEN`, bad → 422 `INVALID_PHONE`), password twice → the strength meter turns red→green and ticks each rule → Python checks everything again (`models.py`: `clean_username`, `clean_phone`, `clean_email`, `RegisterForm` model validator) → the password is saved as a **bcrypt hash (14 rounds)**. The username is never used to log in.
-2. **Log in, step 1** → **email OR phone number** + password (the JSON field is still called `email`; `clean_login_id` turns it into a lowercase email or `+230…`) → if correct, a **6-digit code** is sent by `deliver_login_code()` in `routes/auth.py` (expires in **5 minutes**): accounts with an email → Gmail. **Phone-only accounts → WhatsApp** (`whatsapp_sender.py`, Twilio WhatsApp sandbox; reply code `CODE_SENT_WHATSAPP` / `CODE_RESENT_WHATSAPP`). Twilio keys missing → 503 `PHONE_CODE_NOT_AVAILABLE` ("log in with email"); Twilio can't send (e.g. the phone hasn't joined the sandbox, error 63015) → 503 `WHATSAPP_FAILED`; in both cases the unsent code isn't kept. One try, never retried; the code and token are never logged.
+2. **Log in, step 1** → **email OR phone number** + password (the JSON field is still called `email`; `clean_login_id` turns it into a lowercase email or `+230…`) → if correct, a **6-digit code** is sent by `deliver_login_code()` in `routes/auth.py` (expires in **5 minutes**). A code is needed at **every** login; none is sent at registration. **Where it goes** (`get_channels` / `pick_channel`): email-only → Gmail; phone-only → **WhatsApp** (`whatsapp_sender.py`, Meta WhatsApp Cloud API, reply code `CODE_SENT_WHATSAPP` / `CODE_RESENT_WHATSAPP`); both → email by default, and the code screen shows **"Send code by: Email / WhatsApp"** (two 44 px buttons with `aria-pressed`; a tap = `/resend-code` with `channel`, so it waits 30 s like Resend). `/login` and `/resend-code` take an optional `channel` (`email` / `whatsapp`; one the account doesn't have → 400 `CHANNEL_NOT_AVAILABLE`, anything else → 422 `INVALID_CHANNEL`) and reply with `channel`, `channels` (what this account can use) and `sent_to` = the masked address (`+230 •••• 9222`, `a•••@gmail.com`) → "Code sent on WhatsApp to +230 •••• 9222". Channels are only revealed after a correct password. WhatsApp off / not set up → 503 `WHATSAPP_UNAVAILABLE`; Meta can't send → 503 `WHATSAPP_FAILED`; both carry `params.can_use_email` (true only when the account has an email) → the screen shows **"Send by email instead"**. The unsent code is never kept. One try, never retried; the code and token are never logged (Meta's error number is).
+2b. **Demo mode** (`DEMO_SHOW_OTP=true` in `.env`, default false, anything but exactly `true` = off): the `/login` reply also has `demo_code`, shown in a dashed warning box "DEMO MODE — code: 123456". Only `/login` (password checked) — never `/resend-code` (no password) or `/send-login-code`. If WhatsApp fails in demo mode the normal error applies (no code saved, none shown). **Must be false in the real app.**
 3. **Log in, step 2** → the user types the code → if correct, Python creates a session and puts it in an **HttpOnly cookie** (JavaScript can't read it) → the user is logged in for 7 days.
 4. **3 wrong passwords** → the account is **locked**, and even the right password won't work → the user taps **"Send me a login code"** → enters the emailed code → logged in **and unlocked**.
-5. **Safety limits:** a code dies after 5 wrong guesses; a new code replaces the old one; a new unlock code ("Send me a login code") can only be sent once every 60 seconds.
+5. **Safety limits (same for email and WhatsApp):** 6-digit codes, stored hashed; 5 minutes; a code dies after 5 wrong guesses; 15 wrong guesses per hour over all codes; a new code replaces the old one; 30 s between codes; **max 5 codes sent per account per rolling hour** (`MAX_CODES_PER_HOUR`, counts `otp_codes` rows) → 429 `TOO_MANY_CODES`. `/send-login-code` (locked account) always gives the **same reply** (no channel, no masked address, no demo code) whether the account exists, is locked, is over the limit or WhatsApp failed — it just doesn't send. Login always says "Wrong email or password" (never reveals if an email / phone is registered).
 6. The top **Log in | Register** is a segmented toggle (mode switch, `.tabs.segmented`), not a button; the only primary "Log in" button is under the password.
 6b. **After registering** → the app switches to the Login tab, fills in the email, shows "Account created, please log in" and **hides the Register tab**. The link "Don't have an account? Register" under the login form brings it back.
 7. **Code screen countdown** → login / send-login-code / resend-code reply with `expires_in` (300) and `resend_wait` (30). `login.js` shows "Code expires in 4:32", ticking every second. At 0:00 → "Your code has expired. Please request a new one." and Verify is disabled.
@@ -548,9 +550,9 @@ All money routes need you to be logged in (401 otherwise).
 | Method + address | What it does |
 |---|---|
 | POST `/api/auth/register` ✅ | `{full_name?, username, email?, phone?, password, confirm_password}` (email and/or phone) → create an account |
-| POST `/api/auth/login` ✅ | `{email: email OR phone, password}` → check the password → send a code: email, or WhatsApp for phone-only accounts (423 = locked; WhatsApp not set up → 503 `PHONE_CODE_NOT_AVAILABLE`; WhatsApp failed → 503 `WHATSAPP_FAILED`) |
-| POST `/api/auth/send-login-code` ✅ | locked account → email a code |
-| POST `/api/auth/resend-code` ✅ | "Resend OTP": new code for the same email (429 within 30 s of the last one) |
+| POST `/api/auth/login` ✅ | `{email: email OR phone, password, channel?: email/whatsapp}` → check the password → send a code (default email, phone-only → WhatsApp) → `{code, expires_in, resend_wait, channel, channels, sent_to, demo_code?}` (423 = locked; 400 `CHANNEL_NOT_AVAILABLE`; 429 `TOO_MANY_CODES`; 503 `WHATSAPP_UNAVAILABLE` / `WHATSAPP_FAILED` with `params.can_use_email`; 503 `EMAIL_FAILED`) |
+| POST `/api/auth/send-login-code` ✅ | locked account → send a code by its default channel; always the same `{message, code: LOCKED_CODE_SENT}` reply |
+| POST `/api/auth/resend-code` ✅ | `{email, channel?}` "Resend OTP" / switch channel: new code (429 `RESEND_WAIT` within 30 s, 429 `TOO_MANY_CODES`); same reply fields as login, never `demo_code` |
 | POST `/api/auth/verify-code` ✅ | check the code → log in (+ unlock) → set cookie (410 = code expired) |
 | GET `/api/auth/me` ✅ | `{full_name, username, email, language}` of who is logged in (401 if nobody) |
 | PUT `/api/auth/language` ✅ | `{language: en/fr/mfe}` saved on `profiles.language` so it follows the user across devices; `app.js` applies it after `/me` and saves each switch (`saveMyLanguage` in api.js, silent on failure); login page stays localStorage-only |
@@ -626,16 +628,22 @@ The app sends email through Gmail's normal mail server (SMTP) using an **App Pas
 3. Put them in `backend/.env` as `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`.
 Gmail allows about 500 emails a day, which is plenty for a hackathon.
 
-### Login codes to phones — not built yet
-Phone-only accounts get their login code on **WhatsApp** through the **Twilio WhatsApp sandbox** (`backend/whatsapp_sender.py`, called only from `deliver_login_code()` in `routes/auth.py`; accounts with an email still get it by email).
+### WhatsApp login codes ✅ (Meta WhatsApp Cloud API)
+Phone-only accounts get their login code on **WhatsApp**; accounts with both can choose it on the code screen (`backend/whatsapp_sender.py`, called only from `deliver_login_code()` in `routes/auth.py`). Same steps as README.md "WhatsApp login codes".
 
-**Set it up (free trial, good for a demo — not for real users):**
-1. Create an account at twilio.com/try-twilio.
-2. Console → Messaging → Try it out → Send a WhatsApp message: note the **sandbox number** and your **join code**.
-3. On every phone that will log in, send `join <your-code>` to the sandbox number on WhatsApp (lasts 3 days, then send it again).
-4. `backend/.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (the sandbox number, e.g. `+14155238886`). Restart the server.
-- Limits: a trial includes a small number of free WhatsApp messages; only phones that joined the sandbox receive messages. Real users would need a paid Twilio account and an approved WhatsApp sender.
-- Without the keys, phone-only login answers 503 `PHONE_CODE_NOT_AVAILABLE`; tests always fake the sender (`sent_codes` fixture + `tests/backend/test_whatsapp_sender.py`), so they never call Twilio.
+**Set it up (Meta WhatsApp Cloud API, free test mode):**
+1. Create a Meta developer account at **developers.facebook.com** → **My Apps → Create app** → type **Business** (you also need a Meta Business portfolio; the wizard offers to make one).
+2. In the app dashboard, **add the WhatsApp product**. Meta gives you a free **test phone number** to send from.
+3. **WhatsApp → API Setup**: click **Generate access token** → this *temporary* token lasts less than 24 hours (fine to try it). For a token that doesn't expire: **Business Settings → Users → System users** → add a system user, give it your app and WhatsApp account (full control), **Generate token** with the permissions `whatsapp_business_messaging` + `whatsapp_business_management` (+ `business_management`).
+4. On the same API Setup page copy the **Phone number ID** (a long number shown under the test number — not the phone number itself).
+5. Under **To** → **Manage phone number list**: add the WhatsApp numbers that will log in (each gets a verification code on WhatsApp to confirm). *Test mode only sends to these numbers — Meta allows up to 5 (limit not re-checked in Meta's current docs).*
+6. **WhatsApp Manager → Message templates → Create template** → category **Authentication** → **Copy code** button (optionally the security sentence and an expiry footer, e.g. 5 minutes) → language e.g. English (`en_US`) → submit and **wait until it is Approved**. Note its exact name.
+7. `backend/.env`: `WHATSAPP_ACCESS_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_TEMPLATE_NAME`, `WHATSAPP_TEMPLATE_LANG` (the template's language, default `en_US`), optional `WHATSAPP_API_VERSION` (default `v27.0`), then **`WHATSAPP_ENABLED=true`**. **Restart the server.**
+- What is sent: `POST https://graph.facebook.com/<version>/<PHONE_NUMBER_ID>/messages` with `Authorization: Bearer <token>` and a `template` message whose **body** parameter and **copy-code button** (`sub_type: url`, `index: "0"`) parameter are both the code — Meta's documented format for authentication templates.
+- Test-mode limits: only the numbers added in step 5 receive messages. Real users need a verified business, your own phone number and Meta's per-message pricing for authentication messages.
+- If something is wrong the user only sees the translated "We couldn't send the code on WhatsApp right now"; the **server log** shows Meta's status and error (e.g. `131030` = number not in the test list, `132001` = template name / language doesn't exist, `190` = token expired). The code and the token are never logged.
+- **`DEMO_SHOW_OTP`** must stay **`false`** outside a demo: `true` shows the code on the code screen (after a correct password), so the phone / inbox is no longer needed.
+- Tests always fake the sender (`sent_codes` fixture; `tests/backend/test_whatsapp_sender.py` fakes `httpx.post`; conftest blocks any real call), so they never call Meta.
 
 ### OpenAI (speech-to-text backup only, in this task)
 | Feature | First choice (free, in the browser) | Backup (our backend calls it) | .env key |
@@ -655,6 +663,7 @@ Never put the key in JS or commit it (`.env` is git-ignored).
 
 ### Keys you need to get
 0. **`GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD`**: needed for login (see above).
+0b. **`WHATSAPP_*`** (optional): WhatsApp login codes, see "WhatsApp login codes" above. **`DEMO_SHOW_OTP`** stays `false`.
 1. **`OPENAI_API_KEY`** (optional): platform.openai.com → API keys → Create key; add about $5 of credit. Without it, voice still works in Chrome on Android; other phones show "type it instead".
 
 ### `backend/.env.example`
@@ -671,6 +680,13 @@ AI_COOLDOWN_SECONDS=
 AI_MAX_OUTPUT_TOKENS=
 AI_MAX_INPUT_CHARS=
 AI_TIMEOUT_SECONDS=
+WHATSAPP_ENABLED=false
+WHATSAPP_ACCESS_TOKEN=
+WHATSAPP_PHONE_NUMBER_ID=
+WHATSAPP_TEMPLATE_NAME=
+WHATSAPP_TEMPLATE_LANG=en_US
+WHATSAPP_API_VERSION=
+DEMO_SHOW_OTP=false
 ```
 
 ---

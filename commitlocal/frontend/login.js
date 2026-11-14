@@ -7,6 +7,7 @@ let currentEmail = ""; // email or phone, remembered between the password step a
 let codeExpiresAt = 0;  // when the current code expires (ms, from Date.now())
 let resendReadyAt = 0;  // when "Resend OTP" can be tapped again (ms)
 let codeTimer = null;   // the 1-second countdown interval
+let lastSent = null;    // where the last code went: { channel, channels, sentTo, demoCode } (from the backend reply)
 
 // Same rules as get_password_problems() in backend/security.py
 const PASSWORD_RULES = [
@@ -56,8 +57,9 @@ async function postJson(url, data) {
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, message: readMessage(body),
-             expiresIn: body.expires_in, resendWait: body.resend_wait };
+    return { ok: res.ok, status: res.status, message: readMessage(body), params: body.params || {},
+             expiresIn: body.expires_in, resendWait: body.resend_wait,
+             channel: body.channel, channels: body.channels || [], sentTo: body.sent_to, demoCode: body.demo_code };
   } catch (error) {
     return { ok: false, status: 0, message: t("error.OFFLINE") };
   }
@@ -92,9 +94,49 @@ function startCodeScreen(result) {
   byId("code-input").focus();
   codeExpiresAt = Date.now() + (result.expiresIn || 300) * 1000;
   resendReadyAt = Date.now() + (result.resendWait || 30) * 1000;
+  lastSent = { channel: result.channel, channels: result.channels, sentTo: result.sentTo, demoCode: result.demoCode };
+  byId("email-instead-btn").hidden = true;
+  drawCodeDestination();
   clearInterval(codeTimer);
   codeTimer = setInterval(updateCodeTimer, 1000);
   updateCodeTimer();
+}
+
+// ===== WHERE THE CODE WENT (email / WhatsApp) =====
+// "Code sent on WhatsApp to +230 •••• 9222", the Email / WhatsApp switch, and the DEMO MODE box
+function drawCodeDestination() {
+  const sentTo = byId("code-sent-to");
+  sentTo.hidden = !lastSent.sentTo; // the locked-account reply says nothing about the account
+  if (lastSent.sentTo) {
+    const key = lastSent.channel === "whatsapp" ? "login.sentByWhatsapp" : "login.sentByEmail";
+    setText(sentTo, key, { to: lastSent.sentTo.replace(/ /g, " ") }); // keep "+230 •••• 9222" on one line
+  }
+  byId("channel-switch").hidden = lastSent.channels.length < 2; // only accounts with email AND phone
+  markChannel("channel-email", lastSent.channel === "email");
+  markChannel("channel-whatsapp", lastSent.channel === "whatsapp");
+  showDemoCode(lastSent.demoCode);
+}
+
+function markChannel(buttonId, isOn) {
+  byId(buttonId).classList.toggle("active", isOn);
+  byId(buttonId).setAttribute("aria-pressed", isOn);
+}
+
+// Only when the server runs with DEMO_SHOW_OTP=true (a demo without real email / WhatsApp)
+function showDemoCode(code) {
+  const box = byId("demo-code-box");
+  box.hidden = !code;
+  if (code) setText(box, "login.demoCode", { code: code });
+}
+
+// WhatsApp failed but the account also has an email: offer "Send by email instead"
+function offerEmailInstead(result) {
+  byId("email-instead-btn").hidden = !(result.params && result.params.can_use_email);
+}
+
+async function switchChannel(channel) {
+  if (lastSent && channel === lastSent.channel) return; // already sent that way
+  await resendCode(channel);
 }
 
 function updateCodeTimer() {
@@ -111,6 +153,10 @@ function updateCodeTimer() {
   const resend = byId("resend-btn");
   resend.disabled = waitLeft > 0;
   resend.textContent = waitLeft > 0 ? t("login.resendIn", { n: waitLeft }) : t("login.resend");
+  // Switching channel sends a new code, so it waits like Resend
+  ["channel-email", "channel-whatsapp", "email-instead-btn"].forEach((id) => {
+    byId(id).disabled = waitLeft > 0;
+  });
 }
 
 function showCodeExpired() {
@@ -120,12 +166,14 @@ function showCodeExpired() {
   showMessage("");
 }
 
-async function resendCode() {
+// channel: "email" / "whatsapp" to switch, or empty = the backend's default
+async function resendCode(channel) {
   if (Date.now() < resendReadyAt) return; // cooldown (the backend checks this too)
   byId("resend-btn").disabled = true;
-  const result = await postJson("/api/auth/resend-code", { email: currentEmail });
+  const result = await postJson("/api/auth/resend-code", { email: currentEmail, channel: channel || null });
   if (!result.ok) {
     updateCodeTimer();
+    offerEmailInstead(result);
     return showMessage(result.message, true);
   }
   byId("verify-btn").disabled = false;
@@ -297,7 +345,10 @@ async function startLoginPage() {
   byId("login-form").addEventListener("submit", loginUser);
   byId("code-form").addEventListener("submit", verifyCode);
   byId("send-code-btn").addEventListener("click", sendLoginCode);
-  byId("resend-btn").addEventListener("click", resendCode);
+  byId("resend-btn").addEventListener("click", () => resendCode(lastSent && lastSent.channel));
+  byId("channel-email").addEventListener("click", () => switchChannel("email"));
+  byId("channel-whatsapp").addEventListener("click", () => switchChannel("whatsapp"));
+  byId("email-instead-btn").addEventListener("click", () => resendCode("email"));
   byId("show-register-link").addEventListener("click", () => {
     setRegisterTabVisible(true);
     openTab("register");

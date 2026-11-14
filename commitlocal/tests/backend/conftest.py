@@ -14,6 +14,10 @@ os.environ["DATABASE_URL"] = "sqlite://"
 # Groq: a fake key and fixed limits, set BEFORE backend/.env is read (real .env values never apply in tests)
 os.environ.update({"GROQ_API_KEY": "test-key", "GROQ_MODEL": "", "AI_DAILY_LIMIT": "5", "AI_COOLDOWN_SECONDS": "60",
                    "AI_MAX_OUTPUT_TOKENS": "1000", "AI_MAX_INPUT_CHARS": "6000", "AI_TIMEOUT_SECONDS": "25"})
+# WhatsApp (Meta) off and demo mode off, also set BEFORE backend/.env is read; tests turn them on with monkeypatch
+os.environ.update({"WHATSAPP_ENABLED": "false", "WHATSAPP_ACCESS_TOKEN": "", "WHATSAPP_PHONE_NUMBER_ID": "",
+                   "WHATSAPP_TEMPLATE_NAME": "", "WHATSAPP_TEMPLATE_LANG": "", "WHATSAPP_API_VERSION": "",
+                   "DEMO_SHOW_OTP": "false"})
 
 import database  # noqa: E402
 import security  # noqa: E402
@@ -43,14 +47,36 @@ def client(new_client):
     return new_client()
 
 
+class SentCodes(list):
+    """The codes that would have been sent (a list), plus .where: ("email" | "whatsapp", address) for each one."""
+
+    def __init__(self):
+        super().__init__()
+        self.where = []
+
+    def add(self, channel, address, code):
+        self.append(code)
+        self.where.append((channel, address))
+
+
 @pytest.fixture
 def sent_codes(monkeypatch):
-    """Replaces the real Gmail sender: codes are stored in this list instead of emailed."""
+    """Replaces the real Gmail AND WhatsApp senders: codes are stored in this list instead of sent."""
     import routes.auth
-    codes = []
-    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.append(code))
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: codes.append(code))  # WhatsApp too
+    codes = SentCodes()
+    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.add("email", email, code))
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: codes.add("whatsapp", phone, code))
     return codes
+
+
+@pytest.fixture(autouse=True)
+def no_real_whatsapp(monkeypatch):
+    """EVERY test: the real Meta call (httpx.post in whatsapp_sender.py) fails loudly if anything reaches it."""
+    import whatsapp_sender
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("a test tried to call the real WhatsApp API")
+    monkeypatch.setattr(whatsapp_sender.httpx, "post", refuse)
 
 
 FAKE_AI_REPLY = ('{"overview": "Fictional overview.", "observations": ["Fictional observation."], '

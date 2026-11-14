@@ -111,12 +111,17 @@ class LoginIdForm(BaseModel):
         return clean_login_id(value)
 
 
+# Where to send the code: "email" or "whatsapp". Empty = email when the account has one (routes/auth.py pick_channel)
+CodeChannel = Optional[Literal["email", "whatsapp"]]
+
+
 class LoginForm(LoginIdForm):
     password: str = Field(max_length=200)
+    channel: CodeChannel = None
 
 
 class EmailForm(LoginIdForm):
-    pass
+    channel: CodeChannel = None  # /resend-code: switch to the other channel; /send-login-code ignores it
 
 
 class LanguageForm(BaseModel):

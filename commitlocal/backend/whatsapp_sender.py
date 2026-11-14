@@ -1,9 +1,9 @@
-# whatsapp_sender.py — sends the 6-digit login code by WhatsApp to accounts that registered with a phone number only.
-# It uses Twilio's WhatsApp SANDBOX (free on a Twilio trial account: fine for a demo, not for real users):
-#   1. twilio.com/try-twilio → Console → Messaging → Try it out → Send a WhatsApp message (shows the sandbox number + code)
-#   2. every tester sends "join <code>" to the sandbox number on WhatsApp once (it lasts 3 days)
-#   3. backend/.env: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM (the sandbox number, e.g. +14155238886)
-# The keys live only in backend/.env. The code and the token are never written to the logs.
+# whatsapp_sender.py — sends the 6-digit login code on WhatsApp through the Meta WhatsApp Cloud API
+# (graph.facebook.com), using an approved AUTHENTICATION template with a "copy code" button.
+# Settings live only in backend/.env (see README.md "WhatsApp login codes" for the step-by-step setup):
+#   WHATSAPP_ENABLED=true, WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_TEMPLATE_NAME,
+#   WHATSAPP_TEMPLATE_LANG (default en_US), WHATSAPP_API_VERSION (optional, default below).
+# Called only from deliver_login_code() in routes/auth.py. The code and the token are never written to the logs.
 import logging
 import os
 from pathlib import Path
@@ -14,51 +14,79 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent / ".env")
 log = logging.getLogger(__name__)
 
-TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
+DEFAULT_API_VERSION = "v27.0"  # Graph API version used in Meta's authentication-template docs (Nov 2026)
+DEFAULT_TEMPLATE_LANG = "en_US"
+GRAPH_URL = "https://graph.facebook.com/{version}/{phone_number_id}/messages"
 TIMEOUT_SECONDS = 10
 
 
 class WhatsAppNotConfigured(Exception):
-    """The Twilio keys are missing in backend/.env."""
+    """WHATSAPP_ENABLED is not "true", or a required WhatsApp value is missing in backend/.env."""
 
 
 class WhatsAppFailed(Exception):
-    """Twilio couldn't send the message (network, wrong keys, the phone hasn't joined the sandbox, ...)."""
+    """Meta couldn't send the message (network, expired token, number not in the test list, template not approved...)."""
 
 
-def get_twilio_settings():
-    sid = (os.getenv("TWILIO_ACCOUNT_SID") or "").strip()
-    token = (os.getenv("TWILIO_AUTH_TOKEN") or "").strip()
-    sender = (os.getenv("TWILIO_WHATSAPP_FROM") or "").strip()
-    if not sid or not token or not sender:
+def read_setting(name, default=""):
+    return (os.getenv(name) or "").strip() or default
+
+
+def get_whatsapp_settings():
+    """The values from backend/.env as a dict. Turned off or anything missing → WhatsAppNotConfigured."""
+    if read_setting("WHATSAPP_ENABLED").lower() != "true":
         raise WhatsAppNotConfigured()
-    return sid, token, sender
+    settings = {
+        "token": read_setting("WHATSAPP_ACCESS_TOKEN"),
+        "phone_number_id": read_setting("WHATSAPP_PHONE_NUMBER_ID"),
+        "template": read_setting("WHATSAPP_TEMPLATE_NAME"),
+        "lang": read_setting("WHATSAPP_TEMPLATE_LANG", DEFAULT_TEMPLATE_LANG),
+        "version": read_setting("WHATSAPP_API_VERSION", DEFAULT_API_VERSION),
+    }
+    if not settings["token"] or not settings["phone_number_id"] or not settings["template"]:
+        raise WhatsAppNotConfigured()
+    return settings
 
 
-def whatsapp_address(phone):
-    """'+23057001234' -> 'whatsapp:+23057001234' (how Twilio names WhatsApp numbers)."""
-    return "whatsapp:" + phone if not phone.startswith("whatsapp:") else phone
+def build_template_message(to_phone, code, template, lang):
+    """The JSON Meta expects for an authentication template: the code goes in the body AND the copy-code button."""
+    return {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": to_phone.lstrip("+"),  # "+23051234567" → "23051234567"
+        "type": "template",
+        "template": {
+            "name": template,
+            "language": {"code": lang},
+            "components": [
+                {"type": "body", "parameters": [{"type": "text", "text": code}]},
+                {"type": "button", "sub_type": "url", "index": "0", "parameters": [{"type": "text", "text": code}]},
+            ],
+        },
+    }
 
 
-def build_message(code):
-    return f"Your My Money login code is {code}. It expires in 5 minutes. If you didn't try to log in, ignore this."
+def read_meta_error(res):
+    """Meta's error number + message (e.g. 131030 "Recipient phone number not in allowed list"), for the server log."""
+    try:
+        error = res.json().get("error") or {}
+    except (ValueError, AttributeError):
+        return None, None
+    return error.get("code"), error.get("message")
 
 
 def send_otp_whatsapp(to_phone, code):
     """Sends the login code to a phone number (+230...) on WhatsApp. One try, never retried here."""
-    sid, token, sender = get_twilio_settings()
+    settings = get_whatsapp_settings()
+    url = GRAPH_URL.format(version=settings["version"], phone_number_id=settings["phone_number_id"])
+    body = build_template_message(to_phone, code, settings["template"], settings["lang"])
     try:
-        res = httpx.post(TWILIO_URL.format(sid=sid), auth=(sid, token), timeout=TIMEOUT_SECONDS,
-                         data={"From": whatsapp_address(sender), "To": whatsapp_address(to_phone),
-                               "Body": build_message(code)})
+        res = httpx.post(url, json=body, timeout=TIMEOUT_SECONDS,
+                         headers={"Authorization": "Bearer " + settings["token"]})
     except httpx.HTTPError as error:
         log.warning("WhatsApp code not sent: %s", type(error).__name__)
         raise WhatsAppFailed()
-    if res.status_code >= 400:
-        # Twilio's error number helps (e.g. 63015 = this phone hasn't joined the sandbox); no code or token logged
-        try:
-            twilio_code = res.json().get("code")
-        except ValueError:
-            twilio_code = None
-        log.warning("WhatsApp code not sent: Twilio HTTP %s, error %s", res.status_code, twilio_code)
+    if res.status_code >= 300:
+        meta_code, meta_message = read_meta_error(res)  # Meta's own words, never the code or the token
+        log.warning("WhatsApp code not sent: Meta HTTP %s, error %s: %s", res.status_code, meta_code, meta_message)
         raise WhatsAppFailed()

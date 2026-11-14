@@ -48,7 +48,7 @@
 
     <!-- ACCOUNT LOCKED -->
     <section id="locked-box" hidden>
-      <p data-i18n="login.lockedText">Too many wrong passwords. We can email you a code to log in instead.</p>
+      <p data-i18n="login.lockedText">Too many wrong passwords. We can send you a code (by email or WhatsApp) to log in instead.</p>
       <button id="send-code-btn" class="btn" type="button" data-i18n="login.sendCode">Send me a login code</button>
     </section>
 
@@ -58,7 +58,7 @@
       <p id="reg-username-hint" class="muted small" data-i18n="login.usernameHint">3–30 letters, numbers, dots, underscores or hyphens.</p>
       <label><span data-i18n="login.emailOptional">Email</span> <input id="reg-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false"></label>
       <label><span data-i18n="login.phoneOptional">Phone number</span> <input id="reg-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+230 5123 4567" aria-describedby="reg-contact-hint"></label>
-      <p id="reg-contact-hint" class="muted small" data-i18n="login.contactHint">Give an email, a phone number, or both. Login codes are sent by email (codes by phone are coming later).</p>
+      <p id="reg-contact-hint" class="muted small" data-i18n="login.contactHint">Give an email, a phone number, or both. Login codes are sent by email or on WhatsApp.</p>
       <label><span data-i18n="login.password">Password</span> <input id="reg-password" type="password" autocomplete="new-password" required></label>
 
       <div class="meter" aria-hidden="true"><div id="meter-bar"></div></div>
@@ -75,9 +75,21 @@
       <button class="btn" type="submit" data-i18n="login.createAccount">Create account</button>
     </form>
 
-    <!-- ENTER THE EMAILED CODE -->
+    <!-- ENTER THE CODE (sent by email or on WhatsApp) -->
     <form id="code-form" hidden>
       <p data-i18n="login.enterCode">Enter the 6-digit code we sent you (by email or WhatsApp).</p>
+      <!-- "Code sent on WhatsApp to +230 •••• 9222" (filled by login.js from the backend's masked "sent_to") -->
+      <p id="code-sent-to" class="code-sent-to" hidden></p>
+      <!-- Only when backend/.env has DEMO_SHOW_OTP=true (never in the real app) -->
+      <p id="demo-code-box" class="warning-box demo-code-box" role="note" hidden></p>
+      <!-- Email / WhatsApp switch: only for accounts that have both. A tap = a new code by that channel -->
+      <div id="channel-switch" class="channel-switch" hidden>
+        <p class="muted" id="channel-switch-label" data-i18n="login.sendBy">Send code by:</p>
+        <div class="tabs segmented" role="group" aria-labelledby="channel-switch-label">
+          <button id="channel-email" class="tab" type="button" aria-pressed="false" data-i18n="login.channelEmail">Email</button>
+          <button id="channel-whatsapp" class="tab" type="button" aria-pressed="false" data-i18n="login.channelWhatsapp">WhatsApp</button>
+        </div>
+      </div>
       <label><span data-i18n="login.code">Code</span>
         <input id="code-input" class="code-input" inputmode="numeric" autocomplete="one-time-code"
                maxlength="6" pattern="[0-9]{6}" required>
@@ -86,6 +98,8 @@
       <button id="verify-btn" class="btn" type="submit" data-i18n="login.verify">Verify</button>
       <!-- type="button" so it never submits the code form -->
       <button id="resend-btn" class="btn btn-secondary" type="button" data-i18n="login.resend">Resend OTP</button>
+      <!-- Shown when WhatsApp couldn't send and the account also has an email -->
+      <button id="email-instead-btn" class="btn btn-secondary" type="button" hidden data-i18n="login.sendByEmailInstead">Send by email instead</button>
     </form>
   </main>
 

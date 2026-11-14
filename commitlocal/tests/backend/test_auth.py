@@ -1,4 +1,5 @@
-# test_auth.py — register, log in, /api/auth/me, and email sending (always faked: no real email is ever sent).
+# test_auth.py — register, log in, /api/auth/me, choosing email / WhatsApp for the code, the hourly code cap,
+# demo mode, and sending (always faked: no real email or WhatsApp message is ever sent).
 import smtplib
 
 import pytest
@@ -245,25 +246,186 @@ def test_phone_only_resend_and_wrong_password(client, sent_codes):
     assert res.status_code == 200 and res.json()["code"] == "CODE_RESENT_WHATSAPP" and len(sent_codes) == 2
 
 
-def test_phone_only_login_without_twilio_keys(client, monkeypatch):  # not set up -> friendly 503, no crash
-    def not_set_up(phone, code):
-        raise routes.auth.WhatsAppNotConfigured()
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", not_set_up)
+def whatsapp_raises(monkeypatch, error):
+    def fail(phone, code):
+        raise error
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", fail)
+
+
+def test_phone_only_login_when_whatsapp_is_off(client):  # real sender, WHATSAPP_ENABLED=false -> friendly 503
     client.post(REGISTER, json=phone_only())
     res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
-    assert res.status_code == 503 and res.json()["code"] == "PHONE_CODE_NOT_AVAILABLE"
+    assert res.status_code == 503 and res.json()["code"] == "WHATSAPP_UNAVAILABLE"
+    assert res.json()["params"] == {"can_use_email": False}  # no email to fall back to
 
 
-def test_phone_only_login_when_whatsapp_fails(client, monkeypatch):  # e.g. the phone hasn't joined the sandbox
-    def fails(phone, code):
-        raise routes.auth.WhatsAppFailed()
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", fails)
+def test_phone_only_login_when_whatsapp_fails(client, monkeypatch):  # e.g. the number isn't in Meta's test list
+    whatsapp_raises(monkeypatch, routes.auth.WhatsAppFailed())
     client.post(REGISTER, json=phone_only())
     res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
     assert res.status_code == 503 and res.json()["code"] == "WHATSAPP_FAILED"
+    assert res.json()["params"] == {"can_use_email": False} and "sandbox" not in res.json()["detail"]
     with database.open_db() as db:  # the unsent code was not kept
         from models import OtpCode
         assert db.query(OtpCode).count() == 0
+
+
+# ===== CHOOSING EMAIL OR WHATSAPP =====
+def both(**changes):
+    return form(email="asha@gmail.com", phone="5123 9222", **changes)
+
+
+def test_email_only_gets_the_code_by_email(client, sent_codes):
+    register(client)
+    body = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).json()
+    assert sent_codes.where == [("email", "asha@example.com")]
+    assert body["channel"] == "email" and body["channels"] == ["email"] and body["sent_to"] == "a•••@example.com"
+
+
+def test_phone_only_gets_the_code_on_whatsapp_with_masked_number(client, sent_codes):
+    client.post(REGISTER, json=form(email=None, phone="51239222"))  # 8-digit Mauritius number -> +230
+    body = client.post("/api/auth/login", json={"email": "51239222", "password": PASSWORD}).json()
+    assert sent_codes.where == [("whatsapp", "+23051239222")]
+    assert body["code"] == "CODE_SENT_WHATSAPP" and body["channel"] == "whatsapp" and body["channels"] == ["whatsapp"]
+    assert body["sent_to"] == "+230 •••• 9222"
+
+
+def test_both_default_to_email_and_can_switch_to_whatsapp(client, sent_codes):
+    client.post(REGISTER, json=both())
+    body = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": PASSWORD}).json()
+    assert body["channel"] == "email" and body["channels"] == ["email", "whatsapp"]
+    assert body["sent_to"] == "a•••@gmail.com" and sent_codes.where[-1] == ("email", "asha@gmail.com")
+    res = client.post("/api/auth/resend-code", json={"email": "asha@gmail.com", "channel": "whatsapp"})
+    assert res.status_code == 429 and res.json()["code"] == "RESEND_WAIT"  # switching respects the 30 s wait
+    age_codes(31)
+    body = client.post("/api/auth/resend-code", json={"email": "asha@gmail.com", "channel": "whatsapp"}).json()
+    assert body["code"] == "CODE_RESENT_WHATSAPP" and body["sent_to"] == "+230 •••• 9222"
+    assert sent_codes.where[-1] == ("whatsapp", "+23051239222")
+    res = client.post("/api/auth/verify-code", json={"email": "asha@gmail.com", "code": sent_codes[-1]})
+    assert res.status_code == 200  # the WhatsApp code logs in
+
+
+def test_both_can_ask_for_whatsapp_at_login(client, sent_codes):
+    client.post(REGISTER, json=both())
+    res = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": PASSWORD, "channel": "whatsapp"})
+    assert res.status_code == 200 and res.json()["channel"] == "whatsapp"
+    assert sent_codes.where == [("whatsapp", "+23051239222")]
+
+
+@pytest.mark.parametrize("account, login_id, channel", [("email_only", "asha@example.com", "whatsapp"),
+                                                        ("phone_only", "51234567", "email")])
+def test_channel_the_account_does_not_have(client, sent_codes, account, login_id, channel):  # -> 400, nothing sent
+    client.post(REGISTER, json=form() if account == "email_only" else phone_only())
+    res = client.post("/api/auth/login", json={"email": login_id, "password": PASSWORD, "channel": channel})
+    assert res.status_code == 400 and res.json()["code"] == "CHANNEL_NOT_AVAILABLE" and sent_codes == []
+
+
+def test_unknown_channel_is_refused(client, sent_codes):
+    register(client)
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD, "channel": "sms"})
+    assert res.status_code == 422 and res.json()["code"] == "INVALID_CHANNEL"
+
+
+@pytest.mark.parametrize("error, code", [(routes.auth.WhatsAppNotConfigured(), "WHATSAPP_UNAVAILABLE"),
+                                         (routes.auth.WhatsAppFailed(), "WHATSAPP_FAILED")])
+def test_whatsapp_problem_offers_email_when_the_account_has_one(client, sent_codes, monkeypatch, error, code):
+    client.post(REGISTER, json=both())
+    whatsapp_raises(monkeypatch, error)
+    res = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": PASSWORD, "channel": "whatsapp"})
+    assert res.status_code == 503 and res.json()["code"] == code and res.json()["params"] == {"can_use_email": True}
+    res = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": PASSWORD, "channel": "email"})
+    assert res.status_code == 200 and sent_codes.where == [("email", "asha@gmail.com")]  # "Send by email instead"
+
+
+def test_wrong_password_reveals_no_channels(client, sent_codes):
+    client.post(REGISTER, json=both())
+    body = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": "Wrong!Pass1",
+                                                "channel": "whatsapp"}).json()
+    assert "channels" not in body and "sent_to" not in body and "can_use_email" not in str(body)
+
+
+# ===== CODES PER HOUR =====
+def test_sixth_code_in_an_hour_is_refused(client, sent_codes):
+    register(client)
+    for _ in range(5):
+        assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 200
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    assert res.status_code == 429 and res.json()["code"] == "TOO_MANY_CODES" and len(sent_codes) == 5
+    age_codes(31)
+    res = client.post("/api/auth/resend-code", json={"email": "asha@example.com"})
+    assert res.status_code == 429 and res.json()["code"] == "TOO_MANY_CODES"  # resend counts too
+    age_codes(60 * 60)  # an hour later: allowed again
+    assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 200
+
+
+# ===== DEMO MODE =====
+def test_no_demo_code_by_default(client, sent_codes):
+    client.post(REGISTER, json=both())
+    login = client.post("/api/auth/login", json={"email": "asha@gmail.com", "password": PASSWORD}).json()
+    age_codes(31)
+    resend = client.post("/api/auth/resend-code", json={"email": "asha@gmail.com"}).json()
+    assert "demo_code" not in login and "demo_code" not in resend
+
+
+@pytest.mark.parametrize("value", ["false", "", "True", "yes"])
+def test_demo_mode_needs_exactly_true(client, sent_codes, monkeypatch, value):
+    monkeypatch.setenv("DEMO_SHOW_OTP", value)
+    register(client)
+    assert "demo_code" not in client.post("/api/auth/login", json={"email": "asha@example.com",
+                                                                   "password": PASSWORD}).json()
+
+
+def test_demo_mode_shows_the_sent_code_after_the_password(client, sent_codes, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")
+    client.post(REGISTER, json=phone_only())
+    body = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD}).json()
+    assert body["demo_code"] == sent_codes[-1]
+    age_codes(31)
+    resend = client.post("/api/auth/resend-code", json={"email": "51234567"}).json()  # no password: no code shown
+    assert resend["code"] == "CODE_RESENT_WHATSAPP" and "demo_code" not in resend
+
+
+def test_demo_mode_when_whatsapp_fails_saves_nothing(client, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")
+    whatsapp_raises(monkeypatch, routes.auth.WhatsAppFailed())
+    client.post(REGISTER, json=phone_only())
+    res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
+    assert res.status_code == 503 and "demo_code" not in res.json()
+    with database.open_db() as db:
+        from models import OtpCode
+        assert db.query(OtpCode).count() == 0
+
+
+# ===== LOCKED ACCOUNT: SAME REPLY ALWAYS =====
+def lock(client, login_id):
+    for _ in range(3):
+        client.post("/api/auth/login", json={"email": login_id, "password": "Wrong!Pass1"})
+
+
+def test_send_login_code_reply_is_the_same_for_every_account(client, sent_codes, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")  # even in demo mode nothing extra is shown here
+    client.post(REGISTER, json=both())  # not locked
+    client.post(REGISTER, json=form(username="locked_one", email="locked@example.com"))
+    lock(client, "locked@example.com")
+    client.post(REGISTER, json=form(email=None, username="locked_phone", phone="5765 4321"))
+    lock(client, "57654321")
+    whatsapp_raises(monkeypatch, routes.auth.WhatsAppNotConfigured())  # the phone-only one can't get a code
+    replies = [client.post("/api/auth/send-login-code", json={"email": login_id})
+               for login_id in ["nobody@example.com", "asha@gmail.com", "locked@example.com", "57654321"]]
+    assert {res.status_code for res in replies} == {200}
+    assert len({res.text for res in replies}) == 1  # identical replies
+    assert set(replies[0].json()) == {"message", "code"}
+    assert sent_codes.where == [("email", "locked@example.com")]  # only the locked email account got a code
+
+
+def test_send_login_code_respects_the_hourly_cap(client, sent_codes):
+    register(client)
+    for _ in range(5):
+        client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    age_codes(31)
+    lock(client, "asha@example.com")
+    res = client.post("/api/auth/send-login-code", json={"email": "asha@example.com"})
+    assert res.status_code == 200 and res.json()["code"] == "LOCKED_CODE_SENT" and len(sent_codes) == 5  # not sent
 
 
 def test_login_id_must_be_an_email_or_phone(client):

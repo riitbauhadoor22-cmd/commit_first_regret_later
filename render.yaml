@@ -1,0 +1,37 @@
+# render.yaml — tells Render (render.com) how to put the app online (free plan, https link).
+# Render reads this file from the top of the GitHub repo ("Blueprint"). The database is a free PostgreSQL on Neon
+# (DATABASE_URL); Render's own disk is wiped on every restart, so SQLite can't be used there.
+# Secret values are typed into Render's dashboard (sync: false) — never into this file or git.
+services:
+  - type: web
+    name: my-money
+    runtime: python
+    plan: free
+    rootDir: commitlocal/backend
+    buildCommand: pip install -r requirements.txt
+    # --proxy-headers: Render serves https in front of the app, so login cookies are marked secure
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /login.html
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.1"
+      - key: DATABASE_URL        # Neon connection string (postgresql://...?sslmode=require)
+        sync: false
+      - key: GMAIL_ADDRESS
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: WHATSAPP_ENABLED
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_TEMPLATE_NAME
+        sync: false
+      - key: WHATSAPP_TEMPLATE_LANG
+        value: en_US
+      - key: DEMO_SHOW_OTP       # "true" only during a live demo
+        sync: false
