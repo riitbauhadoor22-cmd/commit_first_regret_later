@@ -144,7 +144,7 @@ def test_loan_but_no_income_or_expenses(logged_in, fake_groq):
     data_line = fake_groq["last_messages"][1]["content"].splitlines()[1]  # the JSON summary sent to the AI
     sent = json.loads(data_line)
     assert sent["loan_repayments"] == 1500 and sent["information_given"]["income"] == "missing"
-    for unknown in ("take_home_income", "needs", "wants", "remaining", "savings_contributions"):
+    for unknown in ("take_home_income", "needs", "wants", "remaining", "saved_this_month", "bank_savings_balance"):
         assert unknown not in sent  # never sent as 0
     assert {"NO_INCOME", "NO_EXPENSES"} <= set(sent["missing_information"])
 
@@ -155,10 +155,12 @@ def test_savings_but_nothing_else(logged_in):
     assert status(logged_in) == {"income": "missing", "expenses": "missing", "loans": "missing", "savings": "provided"}
     savings = logged_in.get("/api/savings").json()
     assert savings["bank_balance"] is None  # adding to a goal doesn't invent a bank balance
-    assert savings["saved_this_month"] == 1000 and savings["monthly_target"] is None
+    # No income and no own target → no monthly saving target, so Saved is unknown ("—"): the goal deposit is
+    # money set aside from the bank, not this month's saving (was: 1000)
+    assert savings["saved_this_month"] is None and savings["monthly_target"] is None
     s = summary(logged_in)
-    assert s["saved"] == 1000 and s["income"] is None and s["savings_percent"] is None
-    assert analysis(logged_in)["savings"] == 1000
+    assert s["saved"] is None and s["income"] is None and s["savings_percent"] is None
+    assert analysis(logged_in)["savings"] is None
 
 
 # ===== 7. ADDING MISSING INFORMATION LATER =====

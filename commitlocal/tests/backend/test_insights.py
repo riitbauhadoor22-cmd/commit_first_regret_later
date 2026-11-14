@@ -31,6 +31,8 @@ def add_month_data(client):
                                            "deadline": "2027-12-01", "priority": 1}).status_code == 201
     goal_id = client.get("/api/goals").json()["goals"][0]["id"]
     assert client.post(f"/api/goals/{goal_id}/add-money", json={"amount": 2000}).status_code == 200
+    # Savings this month = the monthly saving target (the goal deposit is bank money, not counted again)
+    assert client.put("/api/savings", json={"monthly_target": 2000}).status_code == 200
 
 
 def generate(client):
@@ -325,3 +327,62 @@ def test_one_user_cannot_see_another_users_analysis(new_client, sent_codes, fake
 def test_insights_need_login(client):
     assert client.get("/api/insights").status_code == 401
     assert client.post("/api/insights/generate", json={}).status_code == 401
+
+
+# ===== 13. QUICK INSIGHTS (no AI) + GOALS WITHOUT A MONTHLY PLAN =====
+def quick(client):
+    return client.post("/api/insights/quick", json={"month": MONTH})
+
+
+def quick_codes(client):
+    res = quick(client)
+    assert res.status_code == 200
+    return {tip["code"]: tip["params"] for tip in res.json()["quick"]}
+
+
+def test_quick_insights_without_a_key_never_call_groq(user, fake_groq, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "")
+    assert user.get(f"/api/insights?month={MONTH}").json()["ai_configured"] is False
+    codes = quick_codes(user)
+    assert codes["TOP_CATEGORY"] == {"category": "Groceries", "amount": 8000, "percent": 67}
+    assert codes["GOAL_PLAN"]["name"] == "Private laptop" and codes["GOAL_PLAN"]["amount"] > 0
+    assert any(c == "SPLIT" for c in codes) and fake_groq["calls"] == 0
+
+
+@pytest.mark.parametrize("problem", ["AI_FAILED", "AI_TIMEOUT"])
+def test_quick_insights_still_work_after_ai_failure_or_timeout(user, fake_groq, problem):
+    fake_groq["reply"] = AiUnavailable(problem)
+    res = generate(user)
+    assert res.status_code == 502 and res.json()["code"] == problem
+    assert "TOP_CATEGORY" in quick_codes(user) and fake_groq["calls"] == 1  # the quick ones never call Groq
+
+
+def test_quick_insights_with_no_data_point_to_the_right_place(logged_in, fake_groq):
+    codes = quick_codes(logged_in)
+    assert "ADD_INCOME" in codes and "ADD_EXPENSES" in codes and fake_groq["calls"] == 0
+
+
+def test_quick_insights_loan_share(user):
+    assert user.post("/api/my-loans", json={"balance": 50000, "annual_rate": 10, "monthly_payment": 2000}).status_code == 201
+    assert quick_codes(user)["LOAN_SHARE"] == {"amount": 2000, "percent": 10}
+
+
+def test_past_deadline_goal_has_no_monthly_amount_and_does_not_crash(user):
+    assert user.post("/api/goals", json={"name": "car", "target_amount": 100000, "deadline": "2020-01-01"}).status_code == 201
+    goals = {g["name"]: g for g in user.get("/api/goals").json()["goals"]}
+    assert goals["car"]["needs_per_month"] is None and goals["car"]["plan"] == "deadline_passed"
+    body = user.get(f"/api/insights?month={MONTH}").json()
+    car = [g for g in body["analysis"]["goals"] if g["name"] == "car"][0]
+    assert car["needs_per_month"] is None and car["months_left"] is None
+    assert quick_codes(user)["GOAL_LATE"]["name"] == "car"
+    assert user.get(f"/api/dashboard?today={TODAY}").status_code == 200
+
+
+def test_goal_without_target_or_deadline_gets_no_monthly_amount():
+    from money import get_goal_statuses, get_needs_per_month
+    base = {"id": "1", "name": "car", "saved_amount": 500, "priority": 2, "created_at": "2026-01-01"}
+    no_target = {**base, "target_amount": None, "deadline": "2030-01-01"}
+    no_date = {**base, "target_amount": 100000, "deadline": None}
+    assert get_needs_per_month(no_target, TODAY) is None and get_needs_per_month(no_date, TODAY) is None
+    rows = get_goal_statuses([no_target, no_date], 5000, TODAY)
+    assert [(r["needs_per_month"], r["plan"], r["status"]) for r in rows] == [(None, "no_plan", "No target")] * 2

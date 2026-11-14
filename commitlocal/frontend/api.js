@@ -53,7 +53,6 @@ function saveMyLanguage(language) { return callApi("PUT", "/api/auth/language", 
 
 // ===== PROFILE TAB (always the logged-in user's own account; the password hash is never sent) =====
 function getProfile() { return callApi("GET", "/api/profile"); }
-function saveProfileName(fullName) { return callApi("PUT", "/api/profile/name", { full_name: fullName }); }
 function saveProfileUsername(username) { return callApi("PUT", "/api/profile/username", { username: username }); }
 // email / phone null = remove it (the server keeps at least one of the two); both need the current password
 function saveProfileEmail(email, currentPassword) {
@@ -79,6 +78,12 @@ function getExpenses(month, category) {
 function addExpense(expense) { return callApi("POST", "/api/expenses", expense); }
 function editExpense(id, expense) { return callApi("PUT", "/api/expenses/" + id, expense); }
 function deleteExpense(id) { return callApi("DELETE", "/api/expenses/" + id); }
+
+// Guessed category for a note ("KFC 350") — own history first, then keywords. Nothing is saved.
+function suggestCategory(text) { return callApi("GET", "/api/expenses/suggest-category?text=" + encodeURIComponent(text)); }
+function getCategoryKeywords() { return callApi("GET", "/api/expenses/category-keywords"); } // kept on the phone for offline
+// Spending forecast + goal ready-by months (plain maths). today = the phone's local date.
+function getForecast(today, month) { return callApi("GET", "/api/forecast?today=" + today + "&month=" + month); }
 
 function getQuickAdd() { return callApi("GET", "/api/expenses/quick"); }
 function addQuickExpense(chip) {
@@ -117,6 +122,7 @@ function setWeeklyBudget(amount, today) { return callApi("PUT", "/api/dashboard/
 // getInsights only reads (never calls the AI). generateInsights is used ONLY by the button.
 function getInsights(month) { return callApi("GET", "/api/insights?month=" + month); }
 function generateInsights(month) { return callApi("POST", "/api/insights/generate", { month: month }); }
+function getQuickInsights(month) { return callApi("POST", "/api/insights/quick", { month: month }); } // never calls the AI
 
 // ===== MONEY → SAVINGS (was the Targets tab) =====
 function getSavings() { return callApi("GET", "/api/savings"); }

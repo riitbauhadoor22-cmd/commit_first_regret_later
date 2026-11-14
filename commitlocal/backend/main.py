@@ -9,6 +9,7 @@ from errors import add_error_handlers
 from routes.auth import router as auth_router
 from routes.budgets import router as budgets_router
 from routes.dashboard import router as dashboard_router
+from routes.forecast import router as forecast_router
 from routes.expenses import router as expenses_router
 from routes.game import router as game_router
 from routes.goals import router as goals_router
@@ -21,11 +22,13 @@ from routes.my_loans import router as my_loans_router
 from routes.profile import router as profile_router
 from routes.savings import router as savings_router
 from routes.summary import router as summary_router
+from services.ai_insights import log_ai_status
 from services.inflation import load_cpi
 
 app = FastAPI(title="Finance PWA")
 add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
+log_ai_status()  # "AI insights: ON / OFF" in the server log (the key itself is never logged)
 load_cpi()  # read the Statistics Mauritius CPI file once (missing file → "Inflation data unavailable")
 app.include_router(auth_router)
 app.include_router(summary_router)
@@ -38,6 +41,7 @@ app.include_router(loans_router)
 app.include_router(inflation_router)
 app.include_router(game_router)  # Arcade: Budget Challenge
 app.include_router(dashboard_router)  # Dashboard tab (plain maths, never the AI)
+app.include_router(forecast_router)  # spending forecast + goal ready-by dates (plain maths)
 app.include_router(info_router)  # optional info: provided / none / missing
 app.include_router(my_loans_router)  # saved loans (optional)
 app.include_router(insights_router)  # Financial insights (Groq only on the button)
@@ -49,9 +53,25 @@ app.include_router(profile_router)  # Profile tab: own account details (never th
 @app.middleware("http")
 async def always_check_for_new_files(request: Request, call_next):
     response = await call_next(request)
-    if not request.url.path.startswith("/api/"):
+    path = request.url.path
+    if not path.startswith("/api/"):
         response.headers["Cache-Control"] = "no-cache"
+    # Security headers: no MIME guessing, no framing (clickjacking), no full URLs sent to other sites
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "same-origin"
+    if not path.startswith(("/api/", "/docs", "/redoc")):  # /docs needs Swagger's inline script
+        response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     return response
+
+
+# Only our own scripts + Chart.js (jsDelivr) and Google Fonts. Inline style="" attributes are still allowed.
+CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+    "img-src 'self' data:; connect-src 'self'; worker-src 'self'; manifest-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+)
 
 # Must come last: anything that isn't /api/... is a file from the frontend folder
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

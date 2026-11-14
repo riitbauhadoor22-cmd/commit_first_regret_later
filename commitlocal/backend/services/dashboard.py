@@ -2,15 +2,21 @@
 # figures: plain functions (no database) so they are easy to test. Each part says when it can't be worked out
 # ("available": false + a reason code) instead of showing Rs 0.
 #   balance (this month) · spending per month · saving rate per month · loan projection · monthly recap
-#   financial health score · weekly budget + badges · savings jar (goals)
+#   financial health score · weekly budget + badges · savings jar (goals + ready-by month) · spending forecast
 # Dates are "YYYY-MM-DD" text in the user's LOCAL time ("today" comes from the phone), months are "YYYY-MM".
+import calendar
+import math
 from datetime import date, timedelta
 
 from info_status import get_info_status, is_known
-from money import (get_category_spending, get_expenses_in_month, get_goal_statuses, get_month_of, get_monthly_income,
-                   get_monthly_target, get_percent, get_saved_in_month, get_total, get_total_by_kind, get_total_spent,
-                   to_money)
+from money import (get_category_spending, get_expenses_in_month, get_fixed_bills, get_goal_statuses, get_month_of,
+                   get_monthly_income, get_monthly_target, get_percent, get_saved_in_month, get_total,
+                   get_total_by_kind, get_total_spent, to_money)
 from services.financial_analysis import get_previous_month
+from services.forecast import build_goal_etas
+# Loan helpers live with the shared month maths; imported here so older code/tests can still use them from this file
+from services.month_summary import (build_month_summary, get_loan_payments, get_loans_not_in_bills,  # noqa: F401
+                                    loan_counts_in_month)
 
 MONTHS_SHOWN = 6           # graphs show at most the last 6 months that HAVE data
 MAX_LOAN_MONTHS = 360      # projections stop after 30 years
@@ -36,14 +42,11 @@ def get_month_status(records, choices, month):
                            records["savings_row"], records["loans"], choices, month)
 
 
-def loan_counts_in_month(loan, month):
-    """A saved loan's repayment counts from its start month (or the month it was saved) onwards."""
-    start = loan["start_date"] or loan["created_at"][:10]
-    return get_month_of(start) <= month
-
-
-def get_loan_payments(loans, month):
-    return get_total([{"amount": loan["monthly_payment"]} for loan in loans if loan_counts_in_month(loan, month)])
+def get_month_flows(records, choices, month, today=None, budgets=()):
+    """In / Out / Saved / Left (+ forecast) from the ONE shared function (services/month_summary.py), so the
+    Dashboard shows exactly the same numbers as the Money tab."""
+    return build_month_summary(records["incomes"], records["expenses"], records["loans"], records["savings_row"] or {},
+                               get_month_status(records, choices, month), month, today, budgets)
 
 
 def change_percent(before, now):
@@ -55,19 +58,17 @@ def change_percent(before, now):
 
 # ===== 1. BALANCE (this month) =====
 def get_month_balance(records, choices, month):
-    """Available this month = income − expenses − loan repayments − savings contributions.
-    Savings contributions are deposits into goals / the safety net: they are NOT expenses in this app, so they are
-    taken off once. Needs income and expenses to be known (given, or "none"); unknown loans are left out (flagged)."""
-    status = get_month_status(records, choices, month)
-    missing = [topic for topic in ("income", "expenses") if not is_known(status[topic])]
+    """Available this month = the Money tab's Left to spend: income − expenses − loan repayments (not already a fixed
+    bill) − saved_this_month. Needs income and expenses to be known (given, or "none"); unknown loans are left out
+    (flagged). The bank balance and goal deposits are never taken off (they are money already saved)."""
+    flows = get_month_flows(records, choices, month)
+    missing = [topic for topic in ("income", "expenses") if not is_known(flows["info"][topic])]
     if missing:
         return {"available": False, "month": month, "missing": missing}
-    loans_known = is_known(status["loans"])
-    income = get_monthly_income(records["incomes"], month)
-    spent = get_total_spent(records["expenses"], month)
-    saved = get_saved_in_month(records["deposits"], month)
-    loans = get_loan_payments(records["loans"], month) if loans_known else 0
-    balance = to_money(income - spent - saved - loans)
+    loans_known = flows["loan_repayments"] is not None
+    income, spent, saved = flows["income"], flows["spent"], flows["saved"] or 0
+    loans = flows["loan_repayments"] or 0
+    balance = flows["left_to_spend"]
     state = "neutral" if abs(balance) < NEUTRAL_BALANCE else ("positive" if balance > 0 else "negative")
     return {"available": True, "month": month, "income": income, "expenses": spent, "savings": saved,
             "loan_repayments": loans if loans_known else None, "balance": balance, "state": state,
@@ -109,23 +110,28 @@ def build_spending_series(expenses, month):
 
 
 # ===== 3. SAVING RATE PER MONTH =====
-def get_first_savings_month(deposits, goals):
+def get_first_savings_month(deposits, goals, savings_row=None):
+    """First month with a goal or deposit. A saving target set with nothing else counts from every month with
+    income (the target has no date), so the chart isn't empty while the Money tab already shows Saved."""
     months = [get_month_of(d["date"]) for d in deposits] + [get_month_of(g["created_at"][:10]) for g in goals]
+    if not months and savings_row and savings_row.get("monthly_target"):
+        return "0000-00"  # sorts before every real month
     return min(months) if months else None
 
 
 def build_savings_series(records, choices, month):
-    """Saving rate = savings contributions (deposits) ÷ take-home income × 100, for months with income given
-    and from the month the user started saving (a goal or a deposit). Before that, nothing is shown (not 0%)."""
-    first = get_first_savings_month(records["deposits"], records["goals"])
+    """Saving rate = saved_this_month (shared month maths: the planned monthly saving) ÷ take-home income × 100,
+    for months with income given and from the month the user started saving (a goal, a deposit or a target).
+    Before that, nothing is shown (not 0%)."""
+    first = get_first_savings_month(records["deposits"], records["goals"], records["savings_row"])
     if first is None:
         return {"available": False, "reason": "NO_SAVINGS", "months": [], "guide": SAVINGS_GUIDE, "trend": None}
     points = []
     for each in get_recent_months(month):
         if each < first or get_month_status(records, choices, each)["income"] != "provided":
             continue
-        income = get_monthly_income(records["incomes"], each)
-        saved = get_saved_in_month(records["deposits"], each)
+        flows = get_month_flows(records, choices, each)
+        income, saved = flows["income"], flows["saved"] or 0
         points.append({"month": each, "saved": saved, "income": income, "rate": get_percent(saved, income)})
     if not points:
         return {"available": False, "reason": "NO_INCOME", "months": [], "guide": SAVINGS_GUIDE, "trend": None}
@@ -201,18 +207,16 @@ def build_recap(records, choices, month, balance):
     previous_month = get_previous_month(month)
     previous_status = get_month_status(records, choices, previous_month)
     expenses = records["expenses"]
-    spent = get_total_spent(expenses, month) if is_known(status["expenses"]) else None
-    saved = get_saved_in_month(records["deposits"], month)
-    saved = saved if saved > 0 or is_known(status["savings"]) else None
-    target = get_monthly_target(records["savings_row"]["monthly_target"] if records["savings_row"] else None,
-                                records["incomes"], month)
+    flows = get_month_flows(records, choices, month)
+    spent = flows["spent"]
+    saved, target = flows["saved"], flows["monthly_target"]  # saved_this_month vs the monthly saving target
     biggest = get_biggest_category(expenses, month) if status["expenses"] == "provided" else None
     recap = {
         "month": month,
         "income": get_monthly_income(records["incomes"], month) if is_known(status["income"]) else None,
         "expenses": spent,
         "savings": saved,
-        "loan_repayments": get_loan_payments(records["loans"], month) if is_known(status["loans"]) else None,
+        "loan_repayments": flows["loan_repayments"],
         "remaining": balance["balance"] if balance["available"] else None,
         "biggest_category": biggest,
         "savings_progress": {"saved": saved, "target": target,
@@ -236,7 +240,7 @@ def build_recap(records, choices, month, balance):
         same = before is not None and before["category"] == biggest["category"]
         statements.append({"code": "TOP_CATEGORY_SAME" if same else "TOP_CATEGORY",
                            "params": {"category": biggest["category"], "amount": biggest["amount"]}})
-    previous_saved = get_saved_in_month(records["deposits"], previous_month)
+    previous_saved = get_month_flows(records, choices, previous_month)["saved"] or 0
     if saved is not None and (previous_saved > 0 or saved > 0) and get_first_savings_month(
             records["deposits"], records["goals"]) not in (None, month):
         if saved > previous_saved:
@@ -297,12 +301,14 @@ def score_spending(status, income, expenses, month):
     return checks, None
 
 
-def score_savings(status, records, month, goal_rows):
+def score_savings(status, records, month, goal_rows, saved=None):
+    """saved = saved_this_month (shared month maths). REGULAR_SAVING = months in which money was set aside into a
+    goal / the safety net (a habit check; those deposits are not counted as this month's saving)."""
     if status["savings"] != "provided":
         return [], "NEED_SAVINGS"
     deposits = records["deposits"]
     first = get_first_savings_month(deposits, records["goals"])
-    checks = [check("SAVED_THIS_MONTH", 10 if get_saved_in_month(deposits, month) > 0 else 0, 10)]
+    checks = [check("SAVED_THIS_MONTH", 10 if (saved or 0) > 0 else 0, 10)]
     months = [m for m in get_recent_months(month, 3) if first is not None and m >= first]
     if len(months) >= 2:  # consistency needs at least 2 months since saving started
         share = sum(1 for m in months if get_saved_in_month(deposits, m) > 0) / len(months)
@@ -337,12 +343,13 @@ def build_health_score(records, choices, month, category_rows, goal_rows):
     status = get_month_status(records, choices, month)
     income = get_monthly_income(records["incomes"], month)
     spent = get_total_spent(records["expenses"], month)
-    saved = get_saved_in_month(records["deposits"], month)
+    flows = get_month_flows(records, choices, month)  # same Out / Saved as the Money tab
+    saved = flows["saved"] or 0
     loans = get_loan_payments(records["loans"], month) if status["loans"] == "provided" else 0
     results = {
-        "budget": score_budget(status, income, spent, saved, loans, category_rows),
+        "budget": score_budget(status, income, spent, saved, flows["loan_repayments"] or 0, category_rows),
         "spending": score_spending(status, income, records["expenses"], month),
-        "savings": score_savings(status, records, month, goal_rows),
+        "savings": score_savings(status, records, month, goal_rows, flows["saved"]),
         "commitments": score_commitments(status, income, spent, loans),
     }
     parts = []
@@ -453,15 +460,61 @@ def build_weekly(expenses, weekly_budget, today):
             "state": "over" if spending["total"] > budget else "on_track", "min_tracked_days": MIN_TRACKED_DAYS}
 
 
+# ===== 7b. SUGGESTED WEEKLY BUDGET (pre-fills the Profile's weekly budget field) =====
+def round_to_ten(amount):
+    """Nearest Rs 10 (halves go up, not Python's "round half to even")."""
+    return int(math.floor(amount / 10 + 0.5) * 10)
+
+
+def build_weekly_suggestion(records, status, budgets, monthly_target, today):
+    """A weekly spending budget worked out from what the user already entered. Weeks per month = days ÷ 7.
+    1. Category budgets set (budgets table, monthly_limit > 0; they only cover EVERYDAY spending, the same expenses
+       the weekly budget follows) → weekly = sum of those budgets ÷ weeks.
+    2. Otherwise → weekly = (monthly income − fixed monthly bills − loan repayments − monthly saving) ÷ weeks:
+       income       = money.get_monthly_income (incomes table: monthly + weekly × 52 ÷ 12 + one-offs this month)
+       fixed bills  = expenses with is_fixed that count this month (money.get_fixed_bills)
+       loans        = my_loans.monthly_payment counting this month, minus any already recorded as a fixed bill;
+                      only when the user shared their loans (unknown → 0)
+       saving       = the monthly saving target (savings.monthly_target, or 20% of regular income). Goal
+                      contributions and deposits are NOT added on top: goals are paid from this same target.
+    Never negative: ≤ 0 → too_low. code + params are translated by the frontend ("dash.week.suggest.<code>")."""
+    month = today.isoformat()[:7]
+    weeks = calendar.monthrange(today.year, today.month)[1] / 7
+    limits = [b["monthly_limit"] for b in budgets if b["monthly_limit"] and b["monthly_limit"] > 0]
+    if limits:
+        monthly = to_money(sum(limits))
+        return {"available": True, "too_low": False, "source": "budgets", "code": "budgets", "weeks": round(weeks, 2),
+                "amount": max(round_to_ten(monthly / weeks), 10),
+                "params": {"monthly": monthly, "categories": len(limits)}}
+    income = get_monthly_income(records["incomes"], month)
+    if not is_known(status["income"]) or income <= 0:
+        return {"available": False, "too_low": False, "source": None, "code": "noData", "amount": None, "params": {},
+                "weeks": round(weeks, 2)}
+    fixed_bills = get_fixed_bills(records["expenses"], month)
+    bills = get_total(fixed_bills)
+    loans = get_loans_not_in_bills(records["loans"], fixed_bills, month) if is_known(status["loans"]) else 0
+    saving = monthly_target or 0
+    monthly = to_money(income - bills - loans - saving)
+    amount = round_to_ten(monthly / weeks) if monthly > 0 else 0
+    params = {"monthly": max(monthly, 0), "income": income, "bills": bills, "loans": loans, "saving": saving}
+    if amount <= 0:
+        return {"available": False, "too_low": True, "source": "income", "code": "tooLow", "amount": None,
+                "params": params, "weeks": round(weeks, 2)}
+    return {"available": True, "too_low": False, "source": "income", "code": "income", "amount": amount,
+            "params": params, "weeks": round(weeks, 2)}
+
+
 # ===== 8. SAVINGS JAR =====
-def build_jar(goals, monthly_target, today):
-    """One entry per goal: saved, target, remaining and % (the coins are drawn from the percent)."""
+def build_jar(goals, monthly_target, today, deposits=()):
+    """One entry per goal: saved, target, remaining, % (the coins are drawn from the percent) and "eta"
+    (ready-by month from services/forecast.py, None when there's no recent saving history)."""
+    etas = build_goal_etas(goals, list(deposits), today)
     rows = []
     for goal in get_goal_statuses(goals, monthly_target, today.isoformat()):
         rows.append({"id": goal["id"], "name": goal["name"], "saved": goal["saved_amount"],
                      "target": goal["target_amount"],
                      "remaining": to_money(max(goal["target_amount"] - goal["saved_amount"], 0)),
-                     "percent": goal["percent"], "status": goal["status"]})
+                     "percent": goal["percent"], "status": goal["status"], "eta": etas.get(goal["id"])})
     # All goals together (the Dashboard tile "Savings · 40%"); None when there are no goals (never a made-up 0%)
     total_target = sum(row["target"] for row in rows)
     overall = round(sum(min(row["saved"], row["target"]) for row in rows) / total_target * 100, 1) if total_target else None
@@ -491,7 +544,9 @@ def build_dashboard(records, choices, savings_values, budgets, weekly_budget, ea
         "recap": build_recap(records, choices, month, balance),
         "health": build_health_score(records, choices, month, category_rows, goal_rows),
         "weekly": build_weekly(records["expenses"], weekly_budget, today),
+        "weekly_suggestion": build_weekly_suggestion(records, status, budgets, monthly_target, today),
         "recent_weeks": weeks[-4:],
         "new_badges": new_badges,  # saved by the route, then listed with the others
-        "jar": build_jar(records["goals"], monthly_target, today),
+        "jar": build_jar(records["goals"], monthly_target, today, records["deposits"]),
+        "forecast": get_month_flows(records, choices, month, today, budgets)["forecast"],
     }

@@ -1,5 +1,6 @@
 # routes/expenses.py — /api/expenses: list, add, edit and delete expenses, plus the "Quick add" chips.
 # A fixed bill (is_fixed = 1) is saved once and counted in every month from its date onwards.
+# GET /suggest-category?text= guesses a category from the note (own history, then keywords; category_keywords.py).
 import datetime
 import uuid
 from typing import Optional
@@ -7,6 +8,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from categories import CATEGORIES, get_default_kind
+from category_keywords import CATEGORY_KEYWORDS, suggest_category
 from errors import AppError
 from database import find_user_row, get_user_rows, open_db
 from models import Expense, ExpenseForm, QuickAddForm
@@ -85,6 +87,20 @@ def add_quick_expense(form: QuickAddForm, user_id: uuid.UUID = Depends(require_u
         values = {"amount_cents": to_cents(chip["amount"]), "category": chip["category"], "kind": chip["kind"],
                   "description": chip["note"], "date": datetime.date.today(), "is_fixed": False}
         return save_expense(db, values, user_id, "quick")
+
+
+@router.get("/suggest-category")
+def read_category_suggestion(text: str = Query(default="", max_length=100), user_id: uuid.UUID = Depends(require_user)):
+    """A guessed category for a note like "KFC 350" (nothing is saved). Only this user's history is used."""
+    with open_db() as db:
+        expenses = get_user_rows(db, Expense, user_id)
+    return suggest_category(text, expenses)
+
+
+@router.get("/category-keywords")
+def read_category_keywords(user_id: uuid.UUID = Depends(require_user)):
+    """The Mauritian keyword list, so the phone can keep a copy and guess offline too."""
+    return {"keywords": CATEGORY_KEYWORDS}
 
 
 @router.put("/{expense_id}")

@@ -47,7 +47,8 @@ PROTECTED = [(m, p) for m, p, _ in ROUTES if p not in PUBLIC and p != "/api/auth
 def test_routes_were_found():  # sanity: the app really has the money routes
     paths = {p for _, p, _ in ROUTES}
     assert {"/api/summary", "/api/expenses", "/api/income", "/api/budgets", "/api/goals", "/api/savings",
-            "/api/loans/predict", "/api/auth/language",
+            "/api/loans/predict", "/api/auth/language", "/api/forecast", "/api/expenses/suggest-category",
+            "/api/expenses/category-keywords",
             "/api/game/levels", "/api/game/attempts", "/api/game/attempts/{attempt_id}/submit"} <= paths
 
 

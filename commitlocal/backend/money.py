@@ -148,7 +148,8 @@ def get_category_spending(expenses, budgets, month):
 
 # ===== SAVINGS =====
 def get_saved_in_month(deposits, month):
-    """All deposits (goals + safety net) dated this month."""
+    """All deposits (goals + safety net) dated this month. These only set aside money that is already in the bank
+    balance, so they are NOT "saved this month" (see services/month_summary.py); used for goal history only."""
     return get_total([d for d in deposits if get_month_of(d["date"]) == month])
 
 
@@ -201,15 +202,31 @@ def get_months_left(today, deadline):
     return max(months, 1)
 
 
+def get_goal_plan(goal, today):
+    """Can we work out a monthly amount for this goal?
+    'ok' = target and deadline known, deadline not passed · 'no_plan' = no target or no deadline ·
+    'deadline_passed' = the date is before today (the user should update it). Only 'ok' gets a monthly amount."""
+    if not goal.get("target_amount") or not goal.get("deadline"):
+        return "no_plan"
+    if str(goal["deadline"])[:10] < str(today)[:10]:  # ISO dates compare correctly as text
+        return "deadline_passed"
+    return "ok"
+
+
 def get_needs_per_month(goal, today):
-    """(target − saved) ÷ months left."""
+    """(target − saved) ÷ months left (at least 1, so never ÷ 0). None when there's no plan or the deadline passed;
+    0 when the goal is already reached."""
+    if goal.get("target_amount") and goal["saved_amount"] >= goal["target_amount"]:
+        return 0.0
+    if get_goal_plan(goal, today) != "ok":
+        return None
     still_needed = max(goal["target_amount"] - goal["saved_amount"], 0)
     return to_money(still_needed / get_months_left(today, goal["deadline"]))
 
 
 def sort_goals_by_priority(goals):
     """High priority first; same priority → earlier deadline first."""
-    return sorted(goals, key=lambda g: (g["priority"], g["deadline"], g["created_at"]))
+    return sorted(goals, key=lambda g: (g["priority"], g["deadline"] or "9999-12-31", g["created_at"]))  # no date = last
 
 
 def get_goal_statuses(goals, monthly_target, today):
@@ -220,8 +237,11 @@ def get_goal_statuses(goals, monthly_target, today):
     results = []
     for goal in sort_goals_by_priority(goals):
         needs = get_needs_per_month(goal, today)
+        plan = get_goal_plan(goal, today)
         if needs == 0:
             status = "Done"
+        elif needs is None:  # no target / no date / deadline passed: nothing to hand out, can't be "on track"
+            status = "No target" if plan == "no_plan" else "Needs more"
         elif monthly_target is None:
             status = "No target"
         else:
@@ -231,8 +251,9 @@ def get_goal_statuses(goals, monthly_target, today):
         results.append({
             **goal,
             "priority_name": PRIORITY_NAMES.get(goal["priority"], "Low"),
-            "percent": min(get_percent(goal["saved_amount"], goal["target_amount"]), 100.0),
-            "needs_per_month": needs,
+            "percent": min(get_percent(goal["saved_amount"], goal["target_amount"]), 100.0) if goal.get("target_amount") else 0.0,
+            "needs_per_month": needs,  # None = no monthly amount (see "plan")
+            "plan": "ok" if needs == 0 else plan,
             "status": status,
         })
     return results
@@ -247,18 +268,12 @@ def get_goals_warning(total_needed, monthly_target):
 
 
 def format_rupees(amount):
-    """Indian style grouping: 3700 -> '3,700'   150000 -> '1,50,000'   245.5 -> '245.50'"""
-    whole = int(abs(amount))
-    paise = round((abs(amount) - whole) * 100)
-    digits = str(whole)
-    text = digits[-3:]
-    rest = digits[:-3]
-    while rest:  # after the last 3 digits, India groups in twos
-        text = rest[-2:] + "," + text
-        rest = rest[:-2]
-    if paise:
-        text += f".{paise:02d}"
-    return ("-" if amount < 0 else "") + text
+    """Groups of 3 (same as the app's English formatter): 3700 -> '3,700'   100000 -> '100,000'   245.5 -> '245.50'"""
+    cents = round(abs(amount) * 100)
+    text = f"{cents // 100:,}"
+    if cents % 100:
+        text += f".{cents % 100:02d}"
+    return ("-" if amount < 0 and cents else "") + text
 
 
 # ===== QUICK ADD =====
@@ -294,42 +309,13 @@ def get_quick_add(expenses, today):
     return chips
 
 
-# ===== MONEY TAB SUMMARY =====
-def percent_or_none(part, whole):
-    """part ÷ whole × 100, or None when either is unknown or there's no income to divide by."""
-    if part is None or whole is None or whole <= 0:
-        return None
-    return get_percent(part, whole)
-
-
-def get_summary(incomes, expenses, deposits, budgets, month, info=None):
-    """Everything the Money tab's dark card and category rows need for one month.
-    info = {"income": state, "expenses": state, "savings": state} (see info_status.py). A "missing" topic gives
-    None instead of a number, so the screen asks for it instead of showing Rs 0. info None = everything known."""
-    info = info or {}
-    income_known = info.get("income", "provided") != "missing"
-    expenses_known = info.get("expenses", "provided") != "missing"
-    saved = get_saved_in_month(deposits, month)
-    saved_known = saved > 0 or info.get("savings", "provided") != "missing"
-    income = get_monthly_income(incomes, month) if income_known else None
-    spent = get_total_spent(expenses, month) if expenses_known else None
-    needs = get_total_by_kind(expenses, month, "need") if expenses_known else None
-    wants = get_total_by_kind(expenses, month, "want") if expenses_known else None
+# ===== MONEY TAB LISTS =====
+# In / Out / Saved / Left to spend / split are worked out in services/month_summary.py (one shared function).
+def get_month_lists(expenses, budgets, month):
+    """The Money tab's lists for one month: category rows, fixed bills (+ total) and the 3 newest everyday expenses."""
     fixed = get_fixed_bills(expenses, month)
     recent = sorted(get_everyday_expenses(expenses, month), key=lambda e: (e["date"], e["created_at"]), reverse=True)
-    # Left to spend needs BOTH income and spending; recorded deposits are taken off (none recorded = nothing put away)
-    left = to_money(income - spent - saved) if income is not None and spent is not None else None
     return {
-        "month": month,
-        "info": {"income": info.get("income", "provided"), "expenses": info.get("expenses", "provided"),
-                 "savings": info.get("savings", "provided")},
-        "income": income,
-        "spent": spent,
-        "saved": saved if saved_known else None,
-        "left_to_spend": left,
-        "needs_percent": percent_or_none(needs, income),
-        "wants_percent": percent_or_none(wants, income),
-        "savings_percent": percent_or_none(saved if saved_known else None, income),
         "categories": get_category_spending(expenses, budgets, month),
         "fixed_bills": fixed,
         "fixed_total": get_total(fixed),

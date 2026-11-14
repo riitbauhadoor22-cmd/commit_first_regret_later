@@ -44,6 +44,18 @@ def password_matches(password, password_hash):
         return False
 
 
+_dummy_hash = None
+
+
+def waste_password_check(password):
+    """Same slow bcrypt work as a real check, for logins with an unknown email/phone,
+    so the reply time doesn't tell an attacker which accounts exist."""
+    global _dummy_hash
+    if _dummy_hash is None:
+        _dummy_hash = hash_password("Not-a-real-password-1")
+    password_matches(password, _dummy_hash)
+
+
 def make_otp():
     """A random 6-digit code, e.g. "042917"."""
     return f"{secrets.randbelow(1_000_000):06d}"

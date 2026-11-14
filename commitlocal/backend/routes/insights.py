@@ -2,6 +2,8 @@
 #   GET  /api/insights?month=YYYY-MM   → the 50/30/20 check-up (plain maths) + the SAVED AI analysis. Never calls Groq.
 #   POST /api/insights/generate        → only when the user taps the button. Calls Groq only if the saved analysis
 #                                        is missing or out of date, and only within the limits below.
+#   POST /api/insights/quick           → "Quick insights (no AI)": rule-based tips from the user's numbers.
+#                                        NEVER calls Groq, no key or limits needed (used when AI is off or fails).
 # Order of checks in generate: saved one still valid? → enough information given? → key set? → someone already asking? → paused after a 429?
 # → daily limit → cooldown → prompt size → ONE call to Groq (never retried) → check the reply → save it.
 import json
@@ -20,7 +22,7 @@ from routes.auth import require_user
 from routes.info import read_info_status
 from routes.summary import MONTH_PATTERN
 from services import ai_insights
-from services.financial_analysis import analyse_month, build_ai_summary, get_fingerprint
+from services.financial_analysis import analyse_month, build_ai_summary, build_quick_insights, get_fingerprint
 
 router = APIRouter(prefix="/api/insights")
 
@@ -134,6 +136,15 @@ def read_insights(month: Optional[str] = Query(default=None, pattern=MONTH_PATTE
     """Shown every time the Money tab loads: maths + saved analysis. No AI call here."""
     with open_db() as db:
         return build_reply(db, user_id, month or get_this_month(), ai_insights.get_settings())
+
+
+@router.post("/quick")
+def quick_insights(form: InsightRequestForm, user_id: uuid.UUID = Depends(require_user)):
+    """Plain maths only (no AI call, works without GROQ_API_KEY)."""
+    month = form.month or get_this_month()
+    with open_db() as db:
+        analysis = get_analysis(db, user_id, month)
+    return {"month": month, "quick": build_quick_insights(analysis)}
 
 
 @router.post("/generate")

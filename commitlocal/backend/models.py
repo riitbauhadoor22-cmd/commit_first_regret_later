@@ -9,6 +9,7 @@ from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator, m
 from categories import CATEGORIES, GOAL_CPI_CATEGORIES, INCOME_TYPES
 
 MAX_AMOUNT = 10_000_000
+MAX_BALANCE = 1_000_000_000  # a bank BALANCE can be bigger than a monthly amount (the app asks to confirm above 1 crore)
 
 
 # ===== LOGIN FORMS =====
@@ -71,7 +72,7 @@ def clean_login_id(value):
 
 
 class RegisterForm(BaseModel):
-    full_name: str = Field(min_length=1, max_length=100)
+    full_name: Optional[str] = Field(default=None, max_length=100)  # optional: removed from the form, old clients may still send it
     username: str = Field(max_length=60)
     email: Optional[str] = Field(default=None, max_length=254)  # email OR phone (or both) is required
     phone: Optional[str] = Field(default=None, max_length=30)   # Mauritius format, saved as +230XXXXXXXX
@@ -218,7 +219,7 @@ class BudgetForm(BaseModel):
 
 
 class SavingsForm(BaseModel):
-    bank_balance: Optional[float] = Field(default=None, ge=0, le=MAX_AMOUNT)  # empty = not added (never 0 by itself)
+    bank_balance: Optional[float] = Field(default=None, ge=0, le=MAX_BALANCE)  # empty = not added (never 0 by itself)
     monthly_target: Optional[float] = Field(default=None, ge=0, le=MAX_AMOUNT)  # empty = 20% of regular income
 
 
@@ -281,7 +282,7 @@ class MyLoanForm(BaseModel):
 
 # ===== PROFILE TAB (own account only; the user always comes from the session cookie) =====
 class NameForm(BaseModel):
-    full_name: str = Field(min_length=1, max_length=100)
+    full_name: Optional[str] = Field(default=None, max_length=100)  # optional (old clients); empty = no name
 
 
 class UsernameForm(BaseModel):
@@ -406,7 +407,7 @@ class Profile(Base):
     __tablename__ = "profiles"
     id = id_column()
     user_id = user_id_column(unique=True)  # one profile per user
-    full_name = mapped_column(sa.String(100), nullable=False)
+    full_name = mapped_column(sa.String(100), nullable=True)  # optional since migration 0009 (username is shown instead)
     date_of_birth = mapped_column(sa.Date, nullable=True)
     phone = mapped_column(sa.String(20), nullable=True, unique=True)  # "+230XXXXXXXX", unique; can be used to log in
     language = mapped_column(sa.String(3), nullable=True)  # en / fr / mfe, null = never chosen

@@ -2,18 +2,20 @@
 // safety net + goals), the monthly saving target, the safety net, and the goals list with On track / Needs more.
 // It also runs the pop-ups: update bank balance, change target, new/edit goal, add money.
 // All the maths (needs per month, status, warning, inflation estimate) comes from the backend
-// (/api/savings, /api/goals and the Statistics Mauritius CPI projection).
+// (/api/savings, /api/goals and the Statistics Mauritius CPI projection). Goal "ready by" months: /api/forecast.
 // STATUS_KEYS / STATUS_CLASSES / PRIORITY_KEYS live here and are also used by insights.js and dashboard.js.
 // Texts come from i18n.js: t("key"). The backend's status / labels are English values, translated here for display.
 
 // ===== STATE =====
 let savingsInfo = null;    // last answer from /api/savings
 let goalsInfo = null;      // last answer from /api/goals
+let goalEtas = {};         // {goal id: {per_month, months, eta_month}} from /api/forecast (missing = not enough history)
 let editingGoalId = null;  // null = new goal
 let chosenPriority = 2;
 let editingGoalSaved = 0;  // money already in the goal being edited (for the inflation preview)
 let previewTimer = null;   // waits a moment after typing before asking for the inflation preview
 let previewNumber = 0;     // only the newest preview answer is shown
+const BIG_BALANCE = 10000000; // above Rs 1 crore → "Did you mean Rs X?" (catches extra zeros)
 let moneyTarget = null;    // where "Add money" goes: { goalId: 3 } or { goalId: null } for the safety net
 
 // Bar colours (lighter colours, so they show up on the dark card). Goals take turns using them.
@@ -57,7 +59,9 @@ const INFLATION_WARNING_KEYS = {
 // ===== LOAD AND DRAW =====
 async function loadSavingsView() {
   try {
-    const [savings, goals] = await Promise.all([getSavings(), getGoals()]);
+    const [savings, goals, forecast] = await Promise.all([getSavings(), getGoals(),
+      getForecast(getTodayText(), getThisMonthText()).catch(() => null)]); // no forecast = no "ready by" line
+    goalEtas = forecast ? forecast.goals : {};
     savingsInfo = savings;
     goalsInfo = goals;
     drawBankCard(savings.bank_balance, savings.bank_bar);
@@ -134,23 +138,28 @@ function drawBankCard(balance, parts) {
 }
 
 // ===== 2. MONTHLY SAVING =====
+// progress = saved_this_month ÷ monthly target (savings.saving_progress from the backend: bar capped at 100%)
 function drawMonthlySaving(savings) {
+  const progress = savings.saving_progress;
   if (savings.monthly_target === null) { // no own target and no regular income: no made-up target
     byId("target-amount").textContent = "—";
     byId("target-note").textContent = t("targets.noTargetNote");
     byId("target-bar").style.width = "0%";
-    byId("target-progress").textContent = savings.saved_this_month > 0
-      ? t("targets.savedThisMonth", { amount: formatMoney(savings.saved_this_month) }) : "";
+    byId("target-progress").textContent = t("targets.setTarget");
     return;
   }
   byId("target-amount").textContent = t("common.perMonth", { amount: formatMoney(savings.monthly_target) });
   byId("target-note").textContent = savings.monthly_target_custom === null
     ? t("targets.defaultNote")
     : t("targets.ownTarget");
-  const percent = savings.monthly_target > 0 ? Math.min(savings.saved_this_month / savings.monthly_target * 100, 100) : 0;
-  byId("target-bar").style.width = percent + "%";
-  byId("target-progress").textContent =
-    t("targets.progress", { a: formatMoney(savings.saved_this_month), b: formatMoney(savings.monthly_target) });
+  byId("target-bar").style.width = progress.percent + "%";
+  const saved = savings.saved_this_month === null ? 0 : savings.saved_this_month;
+  let text = progress.state === "no_target" ? t("targets.setTarget") // target 0: nothing to measure against
+    : t("targets.progress", { a: formatMoney(saved), b: formatMoney(savings.monthly_target) });
+  if (progress.state === "ok" && progress.extra > 0) {
+    text += " · " + t("targets.targetReachedExtra", { amount: formatMoney(progress.extra) });
+  }
+  byId("target-progress").textContent = text;
 }
 
 // ===== 3. SAFETY NET =====
@@ -243,9 +252,17 @@ function makeGoalCard(goal) {
   saved.append(makeElement("strong", "", formatMoney(goal.saved_amount)), " " + t("common.of") + " " + formatMoney(goal.target_amount));
   numbers.append(saved);
   if (goal.status !== "Done") {
-    numbers.append(makeElement("span", "muted", t("goal.needsPerMonth", { amount: formatMoney(goal.needs_per_month) })));
+    // Monthly amount only with a target and a date still ahead (backend "plan"); otherwise ask to edit the goal
+    let need = t("goal.needsPerMonth", { amount: formatMoney(goal.needs_per_month) });
+    if (goal.plan === "deadline_passed") need = t("goal.deadlinePassed");
+    else if (goal.plan === "no_plan" || goal.needs_per_month === null) need = t("goal.noPlan");
+    numbers.append(makeElement("span", "muted", need));
   }
   card.append(numbers);
+
+  // "At Rs 1,500/month you'll reach this goal in about 6 months (May 2027)." — only with recent saving history
+  const eta = goal.status !== "Done" ? goalEtas[goal.id] : null;
+  if (eta) card.append(makeElement("p", "goal-eta", makeEtaText(eta))); // money-tab.js
 
   // Inflation estimate (filled in when the backend answers; stays hidden if it can't)
   const inflationBox = makeElement("div", "inflation-box");
@@ -287,6 +304,8 @@ async function saveBankForm(event) {
     showFormError("bank-error", t("form.zeroOrMore"));
     return;
   }
+  // Very large balance: check for extra zeros before saving
+  if (balance > BIG_BALANCE && !confirm(t("targets.confirmBig", { amount: formatMoney(balance) }))) return;
   await saveSavings(balance, savingsInfo.monthly_target_custom, "sheet-bank", "bank-error", t("toast.bankSaved"));
 }
 

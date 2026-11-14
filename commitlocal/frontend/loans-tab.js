@@ -60,19 +60,19 @@ function formatLoanDuration(months) {
 
 // Shared look for the graphs (matches the dark theme in style.css)
 function loanChartOptions(xTitle) {
-  const grid = { color: "rgba(160, 190, 255, 0.12)" };
-  const ticks = { color: "#9fb0d6", maxTicksLimit: 6 };
+  const grid = { color: "rgba(130, 165, 255, 0.12)" };
+  const ticks = { color: "#a9b7dc", maxTicksLimit: 6, font: { family: "Inter", size: 11 } };
   return {
     responsive: true,
     maintainAspectRatio: false, // fill the .chart-box height
     animation: false,
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { labels: { color: "#e8eeff", boxWidth: 12 } },
+      legend: { labels: { color: "#e3eaff", boxWidth: 10, usePointStyle: true, font: { family: "Inter", size: 12 } } },
       tooltip: { callbacks: { label: (c) => c.dataset.label + ": " + LoanCalc.formatRupees(c.parsed.y) } },
     },
     scales: {
-      x: { grid: grid, ticks: ticks, title: { display: true, text: xTitle, color: "#9fb0d6" } },
+      x: { grid: grid, ticks: ticks, title: { display: true, text: xTitle, color: "#a9b7dc" } },
       y: { grid: grid, ticks: { ...ticks, callback: (v) => LoanCalc.formatRupees(v).replace("Rs ", "") } },
     },
   };
@@ -132,8 +132,8 @@ function calculateRepayment(event) {
   }
 
   // Line graph: remaining balance each month (+ the extra-payment line)
-  const datasets = [{ label: t("loan.chart.balance"), data: plan.balances, borderColor: "#3d8bff", backgroundColor: "rgba(61, 139, 255, 0.18)", fill: true, pointRadius: 0, tension: 0.2 }];
-  if (extraPlan) datasets.push({ label: t("loan.chart.withExtra"), data: extraPlan.balances, borderColor: "#3ddc84", pointRadius: 0, tension: 0.2 });
+  const datasets = [{ label: t("loan.chart.balance"), data: plan.balances, borderColor: "#3b7bff", backgroundColor: "rgba(59, 123, 255, 0.22)", fill: true, pointRadius: 0, tension: 0.2 }];
+  if (extraPlan) datasets.push({ label: t("loan.chart.withExtra"), data: extraPlan.balances, borderColor: "#4be39a", pointRadius: 0, tension: 0.2 });
   drawLoanChart("repay-chart", {
     type: "line",
     data: { labels: plan.balances.map((_, month) => month), datasets: datasets },
@@ -145,12 +145,12 @@ function calculateRepayment(event) {
     type: "doughnut",
     data: {
       labels: [t("loan.chart.loanAmount"), t("loan.chart.interest")],
-      datasets: [{ data: [v["repay-balance"], plan.totalInterest], backgroundColor: ["#3d8bff", "#ff9a4a"], borderWidth: 0 }],
+      datasets: [{ data: [v["repay-balance"], plan.totalInterest], backgroundColor: ["#3b7bff", "#ffa25c"], borderWidth: 0 }],
     },
     options: {
       responsive: true, maintainAspectRatio: false, animation: false,
       plugins: {
-        legend: { position: "right", labels: { color: "#e8eeff", boxWidth: 12 } },
+        legend: { position: "right", labels: { color: "#e3eaff", boxWidth: 12 } },
         tooltip: { callbacks: { label: (c) => c.label + ": " + LoanCalc.formatRupees(c.parsed) } },
       },
     },
@@ -278,7 +278,7 @@ async function prefillLoanFromMoney() {
   try {
     const summary = await getSummary(getThisMonthText()); // in api.js / app.js
     fillIfFree("afford-income", summary.income);
-    fillIfFree("afford-expenses", summary.spent);
+    fillIfFree("afford-expenses", summary.spent); // expenses only: loan repayments have their own box ("existing")
   } catch (error) {
     // No Money data (e.g. offline): the user just types the numbers
   }
@@ -349,12 +349,12 @@ function showAffordability(answer, v) {
   byId("afford-ai").textContent = t("loan.finalAnswer", { amount: LoanCalc.formatRupees(amount) });
   byId("afford-limit").textContent = usedAi && answer.limited_by === "ai" ? t("loan.limitedBy.ai") : t("loan.limitedBy.rule", { limit: limit });
   byId("afford-ai-est").textContent = usedAi ? t("loan.aiEstimate", { amount: LoanCalc.formatRupees(answer.ai_max_loan),
-    rows: Number(info.rows || 0).toLocaleString("en-IN") }) : t("loan.aiUnavailable");
+    rows: I18n.formatMoney(info.rows, { whole: true }).replace("Rs ", "") }) : t("loan.aiUnavailable");
   byId("afford-risk").hidden = !usedAi;
   byId("afford-risk").textContent = usedAi ? t("loan.risk", { level: t("loan.risk." + answer.risk_level),
     risk: Math.round(answer.predicted_risk * 100), base: Math.round(answer.base_default_rate * 100) }) : "";
   // "How is this calculated?" — dataset size and years come from the model card (via the API)
-  byId("afford-how-model").textContent = usedAi ? t("loan.how.model", { rows: Number(info.rows || 0).toLocaleString("en-IN"),
+  byId("afford-how-model").textContent = usedAi ? t("loan.how.model", { rows: I18n.formatMoney(info.rows, { whole: true }).replace("Rs ", ""),
     from: String(info.date_from || "").slice(0, 4), to: String(info.date_to || "").slice(0, 4) }) : t("loan.how.noModel", { limit: limit });
   byId("afford-how-search").hidden = !usedAi;
   byId("afford-how-search").textContent = usedAi ? t("loan.how.search", { base: Math.round(answer.base_default_rate * 100),
@@ -384,8 +384,8 @@ function showAffordability(answer, v) {
     data: {
       labels: curve.map((p) => p.years),
       datasets: [
-        { label: t("loan.chart.standardRule"), data: curve.map((p) => p.amount), borderColor: "#38d6ff", backgroundColor: "rgba(56, 214, 255, 0.16)", fill: true, pointRadius: 2, tension: 0.2 },
-        { label: t("loan.chart.aiEstimate"), data: curve.map(() => (usedAi ? answer.ai_max_loan : null)), borderColor: "#3ddc84", borderDash: [6, 4], pointRadius: 0 },
+        { label: t("loan.chart.standardRule"), data: curve.map((p) => p.amount), borderColor: "#5cd6ff", backgroundColor: "rgba(92, 214, 255, 0.16)", fill: true, pointRadius: 2, tension: 0.2 },
+        { label: t("loan.chart.aiEstimate"), data: curve.map(() => (usedAi ? answer.ai_max_loan : null)), borderColor: "#4be39a", borderDash: [6, 4], pointRadius: 0 },
       ],
     },
     options: loanChartOptions(t("loan.chart.termYears")),

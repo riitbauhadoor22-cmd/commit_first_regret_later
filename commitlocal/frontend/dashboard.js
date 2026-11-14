@@ -14,7 +14,7 @@ let shownLoanId = "all";      // loan graph: "all" or one loan's id
 let openBlockName = null;     // which Dashboard block is open (null = all are small tiles)
 let currentUserName = "";     // set by app.js after /api/auth/me
 
-const CATEGORY_COLOURS = ["#3d8bff", "#38d6ff", "#3ddc84", "#ff9a4a", "#f5c451", "#e58fd6", "#c5a3ff", "#5fd4e0",
+const CATEGORY_COLOURS = ["#3b7bff", "#5cd6ff", "#4be39a", "#ffa25c", "#f5c451", "#e58fd6", "#c5a3ff", "#5fd4e0",
   "#ff6b7d"];
 const JAR_SEEN_KEY = "jarSeen."; // + goal id → saved amount last shown (so the jar only fills up when savings grow)
 const OPEN_BLOCK_KEY = "dashOpenBlock"; // the last open block (per phone)
@@ -37,6 +37,7 @@ function drawDashboard() {
   drawWelcome(data);
   drawTiles(data);
   drawBalance(data.balance);
+  drawForecast(data.forecast, "dash"); // money-tab.js: "At your current pace…" (hidden without enough data)
   drawHealth(data.health);
   drawSpendingChart(data.spending);
   drawSavingsChart(data.savings);
@@ -224,7 +225,7 @@ function drawSpendingChart(spending) {
   const labels = months.map((point) => monthShort(point.month));
   let datasets;
   if (spendingView === "total") {
-    datasets = [{ label: t("dash.spend.total"), data: months.map((point) => point.total), backgroundColor: "#ff9a4a",
+    datasets = [{ label: t("dash.spend.total"), data: months.map((point) => point.total), backgroundColor: "#ffa25c",
       borderRadius: 8 }];
   } else {
     const categories = [...new Set(months.flatMap((point) => Object.keys(point.by_category)))];
@@ -257,9 +258,9 @@ function drawSavingsChart(savings) {
   byId("dash-save-latest").textContent = t("dash.save.latest", { rate: Math.round(last.rate),
     amount: formatMoney(Math.round(last.saved)) }) + (savings.trend ? " · " + t("dash.save.trend." + savings.trend) : "");
   const options = loanChartOptions(t("dash.chart.month"));
-  options.scales.y.title = { display: true, text: "Rs", color: "#9fb0d6" };
+  options.scales.y.title = { display: true, text: "Rs", color: "#a9b7dc" };
   options.scales.y1 = { position: "right", min: 0, grid: { drawOnChartArea: false },
-    ticks: { color: "#9fb0d6", callback: (v) => v + "%" } };
+    ticks: { color: "#a9b7dc", callback: (v) => v + "%" } };
   options.plugins.tooltip.callbacks.label = (c) => c.dataset.yAxisID === "y1"
     ? c.dataset.label + ": " + Math.round(c.parsed.y) + "%" : c.dataset.label + ": " + LoanCalc.formatRupees(c.parsed.y);
   drawLoanChart("dash-save-chart", {
@@ -267,9 +268,9 @@ function drawSavingsChart(savings) {
     data: {
       labels: months.map((point) => monthShort(point.month)),
       datasets: [
-        { type: "bar", label: t("dash.save.amount"), data: months.map((p) => p.saved), backgroundColor: "#3ddc84",
+        { type: "bar", label: t("dash.save.amount"), data: months.map((p) => p.saved), backgroundColor: "#4be39a",
           borderRadius: 8, yAxisID: "y" },
-        { type: "line", label: t("dash.save.rate"), data: months.map((p) => p.rate), borderColor: "#38d6ff",
+        { type: "line", label: t("dash.save.rate"), data: months.map((p) => p.rate), borderColor: "#5cd6ff",
           pointRadius: 4, tension: 0.2, yAxisID: "y1" },
         { type: "line", label: t("dash.save.guide", { n: savings.guide }), data: months.map(() => savings.guide),
           borderColor: "#f5c451", borderDash: [6, 4], pointRadius: 0, yAxisID: "y1" },
@@ -318,8 +319,8 @@ function drawLoanChoice(loans) {
     type: "line",
     data: {
       labels: points.map((point) => monthShort(point.month)),
-      datasets: [{ label: t("dash.loan.projected"), data: points.map((point) => point.balance), borderColor: "#3d8bff",
-        backgroundColor: "rgba(61, 139, 255, 0.16)", borderDash: [6, 4], fill: true, pointRadius: 0, tension: 0.2 }],
+      datasets: [{ label: t("dash.loan.projected"), data: points.map((point) => point.balance), borderColor: "#3b7bff",
+        backgroundColor: "rgba(59, 123, 255, 0.2)", borderDash: [6, 4], fill: true, pointRadius: 0, tension: 0.2 }],
     },
     options: loanChartOptions(t("dash.chart.month")),
   });
@@ -380,6 +381,7 @@ function makeJarCard(goal, previousSaved, index) {
   card.append(box);
   card.append(makeElement("span", "jar-amounts", t("dash.jar.amounts", { a: formatMoney(goal.saved),
     b: formatMoney(goal.target), n: percent })));
+  if (goal.eta) card.append(makeElement("span", "jar-eta", t("dash.jar.eta", { month: formatShortMonth(goal.eta.eta_month) })));
   if (goal.percent >= 100) card.append(makeElement("span", "jar-done-text", t("dash.jar.reached")));
   return card;
 }

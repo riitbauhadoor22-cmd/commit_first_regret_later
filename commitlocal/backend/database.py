@@ -17,7 +17,7 @@ from models import SavingsSettings
 
 BACKEND_DIR = Path(__file__).parent
 load_dotenv(BACKEND_DIR / ".env")
-DEFAULT_URL = "sqlite:///./app.db"
+DEFAULT_URL = "sqlite:///" + (BACKEND_DIR / "app.db").as_posix()  # always backend/app.db, wherever uvicorn is started from
 
 # ===== CONNECTION =====
 engine = None

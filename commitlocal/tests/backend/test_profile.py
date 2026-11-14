@@ -45,12 +45,11 @@ def test_profile_needs_login(client):
 
 
 # ===== NAME + USERNAME =====
-def test_change_name_rules(logged_in):  # same rules as registration: 1–100 characters, not blank, trimmed
+def test_change_name_rules(logged_in):  # old clients only: optional, trimmed, max 100; empty = no name
     assert logged_in.put("/api/profile/name", json={"full_name": "  Asha Kumar "}).json()["full_name"] == "Asha Kumar"
-    assert logged_in.put("/api/profile/name", json={"full_name": "   "}).json()["code"] == "NAME_REQUIRED"
-    assert logged_in.put("/api/profile/name", json={"full_name": ""}).json()["code"] == "INVALID_NAME"
     assert logged_in.put("/api/profile/name", json={"full_name": "x" * 101}).status_code == 422
     assert profile(logged_in)["full_name"] == "Asha Kumar"
+    assert logged_in.put("/api/profile/name", json={"full_name": "   "}).json()["full_name"] == ""
 
 
 def test_change_username(logged_in):  # trimmed + lowercase; bad ones -> 422 INVALID_USERNAME, nothing changed

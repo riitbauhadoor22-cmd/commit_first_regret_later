@@ -56,6 +56,17 @@ def get_settings():
     )
 
 
+def log_ai_status():
+    """Called once at startup: says whether AI insights are on. NEVER prints the key itself."""
+    startup_log = logging.getLogger("uvicorn.error")  # uvicorn shows this logger in the server window
+    settings = get_settings()
+    if settings.api_key:
+        startup_log.info("AI insights: ON (GROQ_API_KEY is set, model %s).", settings.model)
+    else:
+        startup_log.warning("AI insights: OFF - GROQ_API_KEY is missing in backend/.env. "
+                            "The app will offer 'Quick insights (no AI)' instead.")
+
+
 # ===== WHAT WE EXPECT BACK (checked before saving or showing) =====
 class Suggestion(BaseModel):
     title: str = Field(min_length=1, max_length=120)
@@ -102,6 +113,8 @@ Rules:
   Missing topics are NOT in the summary: they are unknown, never zero. Don't guess them, and don't give advice
   that needs them (e.g. no savings-rate or "money left" advice without income). Say briefly what is missing.
 - With little information, give general observations about what IS there and say more data would help.
+- Goals with plan "no_plan" or "deadline_passed" have no monthly amount: suggest setting / updating the date instead.
+- Write amounts as "Rs 100,000" (groups of three digits).
 - Keep every text short (1-3 sentences). Answer with JSON only."""
 
 REPLY_SHAPE = ('{"overview": "...", "observations": ["..."], "suggestions": [{"title": "...", "description": "...", '

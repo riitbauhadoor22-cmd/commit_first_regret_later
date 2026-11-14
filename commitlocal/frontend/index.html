@@ -7,7 +7,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title data-i18n="app.name">My Money</title>
-  <meta name="theme-color" content="#101e49">
+  <meta name="theme-color" content="#060c26">
   <script src="theme.js"></script> <!-- Brighter / Darker theme: set on <html> before the page is drawn -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -16,7 +16,7 @@
   <meta name="apple-mobile-web-app-title" content="My Money">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Space+Grotesk:wght@500;700&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body class="app">
@@ -26,7 +26,7 @@
   <main id="page-dashboard" class="page">
     <header class="page-head">
       <h1 data-i18n="nav.dashboard">Dashboard</h1>
-      <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
+      <div class="head-actions"><button class="icon-btn settings-btn" type="button" aria-haspopup="dialog" aria-controls="sheet-settings" data-i18n-aria="settings.open" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
     </header>
     <div>
       <p id="dash-welcome" class="dash-welcome"></p>
@@ -63,6 +63,10 @@
           <p id="dash-balance" class="big-number">…</p>
           <p id="dash-balance-compare" class="muted"></p>
           <p id="dash-put-aside" class="muted"></p>
+          <div id="dash-forecast" class="forecast" hidden> <!-- spending forecast, from the 5th of the month -->
+            <p id="dash-forecast-spend"></p>
+            <p id="dash-forecast-left"></p>
+          </div>
           <p class="muted small" data-i18n="dash.balance.how">Income − expenses − loan repayments − savings put aside this month.</p>
           <button id="dash-details-btn" class="link-btn" type="button" style="align-self: flex-start;" data-i18n="dash.balance.details">See the details in Money</button>
           </div>
@@ -215,7 +219,7 @@
   <main id="page-money" class="page" hidden>
     <header class="page-head">
       <h1 data-i18n="nav.money">Money</h1>
-      <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
+      <div class="head-actions"><button class="icon-btn settings-btn" type="button" aria-haspopup="dialog" aria-controls="sheet-settings" data-i18n-aria="settings.open" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
     </header>
 
     <div class="month-picker">
@@ -230,6 +234,7 @@
         <p class="label" data-i18n="money.leftToSpend">Left to spend this month</p>
         <p id="left-to-spend" class="big-number">…</p>
         <p id="left-note" class="muted" data-i18n="money.leftUnknown" hidden>Add your income and expenses to see this.</p>
+        <p id="left-reason" class="left-reason" hidden></p> <!-- why Left to spend is negative -->
       </div>
       <div class="stats">
         <div class="stat"><p class="label" data-i18n="money.in">In</p><p id="sum-in" class="value in"></p></div>
@@ -240,8 +245,15 @@
         <span id="split-needs" class="split-needs"></span>
         <span id="split-wants" class="split-wants"></span>
         <span id="split-savings" class="split-savings"></span>
+        <span id="split-loans" class="split-loans"></span>
+        <span id="split-unplanned" class="split-unplanned"></span> <!-- grey: income not planned yet -->
       </div>
       <p id="split-legend" class="split-legend"></p>
+      <!-- Spending forecast (this month only, from the 5th; hidden when there's too little data) -->
+      <div id="money-forecast" class="forecast" hidden>
+        <p id="money-forecast-spend"></p>
+        <p id="money-forecast-left"></p>
+      </div>
       <div id="money-prompts" class="stack"></div> <!-- only shown for information the user hasn't given -->
     </section>
 
@@ -258,11 +270,6 @@
         <div class="card-head">
           <h2 data-i18n="money.everyday">Everyday spending</h2>
           <div class="actions">
-            <button id="mic-btn" class="mic-btn" type="button" aria-label="Add an expense by voice" data-i18n-aria="money.voiceAria">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-                <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
-              </svg>
-            </button>
             <button id="add-expense-btn" class="btn btn-small" type="button" data-i18n="money.addExpenseButton">+ Add expense</button>
           </div>
         </div>
@@ -358,28 +365,36 @@
     </div>
 
     <!-- Financial insights: 50/30/20 check-up (plain maths) + saved AI analysis. Groq only on the button. -->
-    <section id="insights-card" class="card stack" aria-labelledby="insights-title">
-      <div class="card-head">
+    <!-- Collapsed by default (<details>) so the Money tab stays short; tap the title to open it -->
+    <section id="insights-card" class="card stack fold-card" aria-labelledby="insights-title">
+      <details class="fold">
+      <summary class="card-head">
         <h2 id="insights-title" data-i18n="insights.title">Financial insights</h2>
         <span id="insights-date" class="muted"></span>
-      </div>
+      </summary>
+      <div class="stack fold-body">
       <p class="small-title" data-i18n="insights.splitTitle">Your month vs the 50 · 30 · 20 guide</p>
       <div id="insights-split" class="split-table"></div>
+      <div id="insights-empty-actions" class="info-actions" hidden></div> <!-- "Add income" / "Add expense" (insights.js) -->
       <ul id="insights-notes" class="insight-notes"></ul>
       <p id="insights-gaps" class="muted"></p>
       <p id="insights-goals-title" class="small-title" data-i18n="insights.goalsTitle" hidden>Savings goals</p>
       <ul id="insights-goals" class="insight-goals"></ul>
       <p class="small-title" data-i18n="insights.aiTitle">AI suggestions</p>
       <div id="insights-ai" class="stack"></div>
+      <div id="insights-quick" class="stack" hidden></div> <!-- "Quick insights (no AI)" list (insights.js) -->
       <button id="insights-btn" class="btn" type="button" data-i18n="insights.generate">Generate Financial Insights</button>
       <p id="insights-status" class="muted" role="status" aria-live="polite"></p>
-      <p class="muted" data-i18n="insights.disclaimer">Educational guidance only, not financial advice. AI text is in English.</p>
+      <button id="insights-quick-btn" class="btn btn-secondary" type="button" hidden data-i18n="insights.quickButton">Quick insights (no AI)</button>
+      <p class="muted small" data-i18n="insights.disclaimer">Educational guidance only, not financial advice. AI text is in English.</p>
+      </div>
+      </details>
     </section>
   </main>
 
   <!-- ===================== TAB 3: LOANS (all maths in loan-calc.js, page in loans-tab.js) ===================== -->
   <main id="page-loans" class="page" hidden>
-    <header class="page-head"><h1 data-i18n="nav.loans">Loans</h1><div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div></header>
+    <header class="page-head"><h1 data-i18n="nav.loans">Loans</h1><div class="head-actions"><button class="icon-btn settings-btn" type="button" aria-haspopup="dialog" aria-controls="sheet-settings" data-i18n-aria="settings.open" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div></header>
 
     <!-- Section 1: repayment calculator -->
     <section class="card">
@@ -468,11 +483,11 @@
     <p class="muted small disclaimer" data-i18n="loan.disclaimer">Estimates only – not financial advice. Check with your bank.</p>
   </main>
 
-  <!-- ===================== PROFILE (4th tab, was Arcade): account, weekly budget + badges, Budget Challenge, settings ===================== -->
+  <!-- ===================== PROFILE (4th tab, was Arcade): account, weekly budget + badges, Budget Challenge ===================== -->
   <main id="page-profile" class="page" hidden>
     <header class="page-head">
       <h1 data-i18n="nav.profile">Profile</h1>
-      <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
+      <div class="head-actions"><button class="icon-btn settings-btn" type="button" aria-haspopup="dialog" aria-controls="sheet-settings" data-i18n-aria="settings.open" aria-label="Settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></div>
     </header>
 
     <!-- a) My account (profile-tab.js, GET /api/profile). Values change only after the server says OK. -->
@@ -485,23 +500,6 @@
         </div>
       </div>
       <ul class="account-list">
-        <li class="account-row">
-          <div class="account-row-top">
-            <div class="account-row-text">
-              <span class="account-label" data-i18n="profile.name">Name</span>
-              <span id="value-name" class="account-value">…</span>
-            </div>
-            <button id="edit-name" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-name" data-i18n="common.edit">Edit</button>
-          </div>
-          <form id="form-name" class="account-form" novalidate hidden>
-            <label><span data-i18n="profile.newName">Your name</span> <input id="input-name" type="text" autocomplete="name" maxlength="100"></label>
-            <p id="error-name" class="message error" role="alert"></p>
-            <div class="account-actions">
-              <button id="save-name" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
-              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
-            </div>
-          </form>
-        </li>
         <li class="account-row">
           <div class="account-row-top">
             <div class="account-row-text">
@@ -613,7 +611,11 @@
         <div class="info-actions">
           <button class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
           <button id="dash-week-remove" class="link-btn" type="button" data-i18n="dash.week.remove" hidden>Remove</button>
+          <button id="dash-week-use" class="link-btn" type="button" hidden></button>
         </div>
+        <!-- Suggested weekly budget (from income, bills, loans, saving or category budgets; GET /api/dashboard) -->
+        <p id="dash-week-suggest" class="muted small" hidden></p>
+        <p id="dash-week-suggest-math" class="muted small" hidden></p>
         <p id="dash-week-error" class="message error" role="alert"></p>
       </form>
       <p id="dash-week-note" class="muted"></p>
@@ -678,25 +680,13 @@
       <button id="game-back" class="btn btn-light" type="button" data-i18n="game.back">Choose another level</button>
     </section>
 
-    <section class="card stack">
-      <h2 data-i18n="game.previous">Previous results</h2>
-      <ul id="game-history" class="item-list"></ul>
+    <section class="card stack fold-card">
+      <details class="fold">
+        <summary><h2 data-i18n="game.previous">Previous results</h2></summary>
+        <div class="fold-body"><ul id="game-history" class="item-list"></ul></div>
+      </details>
     </section>
 
-    <!-- d) Settings: theme (theme.js), language, log out -->
-    <section class="card stack" aria-labelledby="settings-title">
-      <h2 id="settings-title" data-i18n="profile.settings">Settings</h2>
-      <fieldset>
-        <legend data-i18n="profile.theme">Theme</legend>
-        <div class="toggle">
-          <button id="theme-brighter" class="choice" type="button" aria-pressed="true" data-i18n="profile.themeBrighter">Brighter</button>
-          <button id="theme-darker" class="choice" type="button" aria-pressed="false" data-i18n="profile.themeDarker">Darker</button>
-        </div>
-      </fieldset>
-      <label><span data-i18n="lang.choose">Language</span>
-        <select class="lang-select settings-lang" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select></label>
-      <button class="btn btn-danger logout-btn" type="button" data-i18n="nav.logOut">Log out</button>
-    </section>
   </main>
 
   <!-- ===================== BOTTOM TAB BAR ===================== -->
@@ -742,11 +732,11 @@
             <input id="expense-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
           </span>
         </label>
-        <button id="say-it-btn" class="btn btn-light" type="button" hidden data-i18n="expense.sayIt">🎤 Say it</button>
 
         <fieldset>
           <legend data-i18n="expense.category">Category</legend>
           <div id="category-grid" class="category-grid"></div>
+          <p id="category-suggested" class="suggested-hint" aria-live="polite" hidden></p>
         </fieldset>
 
         <fieldset>
@@ -1033,6 +1023,27 @@
   </div>
 
   <!-- ===================== POP-UP: LOG OUT? (every Log out button; Cancel is focused first) ===================== -->
+  <!-- Settings (gear at the top right of every page): theme (theme.js), language (i18n.js), log out (app.js) -->
+  <div id="sheet-settings" class="sheet sheet-side" role="dialog" aria-modal="true" aria-labelledby="settings-title" hidden>
+    <div class="sheet-box stack">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close data-i18n="common.close">Close</button>
+        <h2 id="settings-title" data-i18n="profile.settings">Settings</h2>
+        <span></span>
+      </header>
+      <fieldset>
+        <legend data-i18n="profile.theme">Theme</legend>
+        <div class="toggle">
+          <button id="theme-brighter" class="choice" type="button" aria-pressed="true" data-i18n="profile.themeBrighter">Brighter</button>
+          <button id="theme-darker" class="choice" type="button" aria-pressed="false" data-i18n="profile.themeDarker">Darker</button>
+        </div>
+      </fieldset>
+      <label><span data-i18n="lang.choose">Language</span>
+        <select class="lang-select settings-lang" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select></label>
+      <button class="btn btn-danger logout-btn settings-logout" type="button" data-i18n="nav.logOut">Log out</button>
+    </div>
+  </div>
+
   <div id="sheet-logout" class="sheet sheet-center" role="alertdialog" aria-modal="true" aria-labelledby="logout-title" aria-describedby="logout-text" hidden>
     <div class="sheet-box dialog-box">
       <h2 id="logout-title" data-i18n="logout.title">Log out?</h2>
@@ -1050,11 +1061,12 @@
   <script src="api.js"></script>
   <script src="app.js"></script>
   <script src="budget-calc.js"></script>
+  <script src="category-guess.js"></script> <!-- offline category guess for the Add expense form -->
   <script src="money-tab.js"></script>
   <script src="savings-view.js"></script> <!-- Money → Savings (was the Targets tab) -->
   <script src="insights.js"></script> <!-- needs STATUS_KEYS from savings-view.js -->
   <!-- Chart.js (pinned version) for the Loans graphs. Offline it just doesn't load and the graphs are hidden. -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" integrity="sha384-9nhczxUqK87bcKHh20fSQcTGD4qq5GhayNYSYWqwBkINBhOfQLg/P5HG5lF1urn4" crossorigin="anonymous"></script>
   <script src="loan-calc.js"></script>
   <script src="loans-tab.js"></script>
   <script src="game-calc.js"></script>

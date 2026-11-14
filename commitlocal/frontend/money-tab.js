@@ -3,6 +3,8 @@
 // one-off income), and the Add expense, Add income and Set budget pop-ups. The Savings view is drawn by savings-view.js. All the maths comes from the backend (/api/summary).
 // Tapping a category row opens its own pop-up: spent vs budget, set the budget, add / edit / delete its expenses.
 // The spent-vs-budget numbers and colours come from budget-calc.js (BudgetCalc.budgetProgress).
+// Spending forecast (GET /api/forecast) is drawn under the dark card; goal "ready by" texts use makeEtaText.
+// Add expense: typing a note ("KFC 350") suggests a category (own history, then keywords — category-guess.js offline).
 // Texts come from i18n.js: t("key"). Category / income type VALUES stay English (the API needs them); only the display is translated.
 
 // ===== STATE (what the tab is showing right now) =====
@@ -21,6 +23,9 @@ let detailEditingId = null;   // expense being edited in the category pop-up (nu
 let detailEditingKind = null; // keep its Need/Want when editing
 let expensesGiven = true;     // false = no spending recorded this month (and not "Nothing spent"): show "—", not Rs 0
 let moneyView = "out";        // which part of the switch is shown: "in", "out" or "savings"
+let categorySuggested = false; // true = the chosen category was auto-picked from the note (not tapped by the user)
+let suggestTimer = null;      // waits until the user stops typing
+let suggestCount = 0;         // only the newest suggestion request may change the form
 
 // ===== LOAD AND DRAW THE WHOLE TAB =====
 async function loadMoneyTab() {
@@ -39,7 +44,52 @@ async function loadMoneyTab() {
   } catch (error) {
     showToast(error.message, true);
   }
+  loadForecast();
   loadInsights(shownMonth); // insights.js: reads the saved analysis, never calls the AI
+}
+
+// ===== SPENDING FORECAST (this month only; nothing shown when there's too little data) =====
+async function loadForecast() {
+  const month = shownMonth;
+  let forecast = null;
+  try {
+    forecast = await getForecast(getTodayText(), month);
+  } catch (error) {
+    forecast = null; // no forecast is fine: it is only a hint
+  }
+  if (month === shownMonth) drawForecast(forecast ? forecast.spending : null, "money");
+}
+
+// prefix = "money" (Money tab) or "dash" (Dashboard "Available" block)
+function drawForecast(spending, prefix) {
+  const box = byId(prefix + "-forecast");
+  box.hidden = !spending || !spending.available;
+  if (box.hidden) return;
+  const amount = formatMoney(Math.round(spending.forecast_spent));
+  const spend = byId(prefix + "-forecast-spend");
+  spend.textContent = spending.budget === null ? t("forecast.spend", { amount: amount })
+    : t("forecast.spendBudget", { amount: amount, budget: formatMoney(Math.round(spending.budget)) });
+  spend.classList.toggle("over", spending.over_budget);
+  const left = byId(prefix + "-forecast-left");
+  const leftKnown = spending.left_at_month_end !== null;
+  left.hidden = !leftKnown; // no income → no "left" guess
+  if (!leftKnown) return;
+  const short = spending.left_at_month_end < 0;
+  left.textContent = t(short ? "forecast.short" : "forecast.left",
+    { amount: formatMoney(Math.abs(Math.round(spending.left_at_month_end))), date: formatShortDate(spending.last_day) });
+  left.classList.toggle("over", short);
+}
+
+// "2027-05" -> "May 2027" / "mai 2027"
+function formatShortMonth(monthText) {
+  const [year, month] = monthText.split("-").map(Number);
+  return I18n.formatDate(new Date(year, month - 1, 1), { month: "short", year: "numeric" });
+}
+
+// Goal ETA {per_month, months, eta_month} -> "At Rs 1,500/month you'll reach this goal in about 6 months (May 2027)."
+function makeEtaText(eta) {
+  const params = { amount: formatMoney(Math.round(eta.per_month)), n: eta.months, month: formatShortMonth(eta.eta_month) };
+  return t(eta.months === 1 ? "forecast.etaOne" : "forecast.eta", params);
 }
 
 function changeMonth(count) {
@@ -48,21 +98,28 @@ function changeMonth(count) {
 }
 
 // ===== DARK SUMMARY CARD =====
-// Numbers the user hasn't given come back as null: they show "—" and a prompt, never "Rs 0"
+// Numbers the user hasn't given come back as null: they show "—" and a prompt, never "Rs 0".
+// All numbers come from the backend's one shared month maths (In − Out − Saved = Left to spend); the bank
+// balance is never part of them.
 function drawSummaryCard(summary) {
   const left = byId("left-to-spend");
   const leftKnown = summary.left_to_spend !== null;
-  left.textContent = !leftKnown ? "—"
-    : summary.left_to_spend < 0 ? formatOut(summary.left_to_spend) : formatMoney(summary.left_to_spend);
-  left.classList.toggle("negative", leftKnown && summary.left_to_spend < 0);
+  const negative = leftKnown && summary.left_to_spend < 0;
+  left.textContent = !leftKnown ? "—" : negative ? formatOut(summary.left_to_spend) : formatMoney(summary.left_to_spend);
+  left.classList.toggle("negative", negative);
   byId("left-note").hidden = leftKnown;
+  const reason = byId("left-reason"); // short reason under a red (negative) number
+  reason.hidden = !negative;
+  reason.textContent = negative ? t(summary.left_reason === "SAVING_AND_SPENDING"
+    ? "money.leftReasonSaving" : "money.leftReasonSpending") : "";
 
-  // The 3 small numbers are rounded to whole rupees so they fit on small phones
+  // The 3 small numbers are rounded to whole rupees so they fit on small phones.
+  // Out = everyday + fixed bills + loan repayments, shown without a minus (the orange colour says it's money out)
   byId("sum-in").textContent = summary.income === null ? "—" : formatIn(Math.round(summary.income));
-  byId("sum-out").textContent = summary.spent === null ? "—" : formatOut(Math.round(summary.spent));
+  byId("sum-out").textContent = summary.out === null ? "—" : formatMoney(Math.round(summary.out));
   byId("sum-saved").textContent = summary.saved === null ? "—" : formatMoney(Math.round(summary.saved));
 
-  drawSplitBar(summary.needs_percent, summary.wants_percent, summary.savings_percent);
+  drawSplitBar(summary);
   drawMoneyPrompts(summary.info);
   byId("spend-empty").hidden = summary.info.expenses !== "missing";
 }
@@ -84,28 +141,33 @@ function drawMoneyPrompts(info) {
   });
 }
 
-// The Needs / Wants / Savings bar. If they add up to more than 100%, the bar is squeezed to fit.
-// No income (or no spending) given → no bar: percentages would be made up.
-function drawSplitBar(needs, wants, savings) {
-  const known = needs !== null && wants !== null;
-  byId("split-bar").hidden = !known;
-  if (!known) {
-    byId("split-legend").replaceChildren(makeElement("span", "aim", t("money.splitNeedsIncome")));
+// The Needs / Wants / Savings (+ Loans) bar, each a share of income, + a grey "Not planned yet" rest.
+// summary.split.bar widths come from the backend and always add up to 100 (never more).
+// No income → "Add income to see your split"; spending not given → no bar (percentages would be made up).
+function drawSplitBar(summary) {
+  const split = summary.split;
+  byId("split-bar").hidden = !split;
+  if (!split) {
+    const key = summary.income === null || summary.income <= 0 ? "money.splitAddIncome" : "money.splitNeedsIncome";
+    byId("split-legend").replaceChildren(makeElement("span", "aim", t(key)));
     return;
   }
-  savings = savings === null ? 0 : savings; // savings not given: that part of the bar stays empty
-  const total = Math.max(needs + wants + savings, 100);
-  byId("split-needs").style.width = (needs / total) * 100 + "%";
-  byId("split-wants").style.width = (wants / total) * 100 + "%";
-  byId("split-savings").style.width = (savings / total) * 100 + "%";
+  ["needs", "wants", "savings", "loans", "unplanned"].forEach((part) => {
+    byId("split-" + part).style.width = split.bar[part] + "%";
+  });
 
-  const legend = byId("split-legend");
-  legend.replaceChildren(
-    makeLegendItem("split-needs", t("money.needsPercent", { n: Math.round(needs) })),
-    makeLegendItem("split-wants", t("money.wantsPercent", { n: Math.round(wants) })),
-    makeLegendItem("split-savings", t("money.savingsPercent", { n: Math.round(savings) })),
-    makeElement("span", "aim", t("money.aim"))
-  );
+  const percent = split.percent;
+  const items = [
+    makeLegendItem("split-needs", t("money.needsPercent", { n: Math.round(percent.needs) })),
+    makeLegendItem("split-wants", t("money.wantsPercent", { n: Math.round(percent.wants) })),
+    makeLegendItem("split-savings", t("money.savingsPercent", { n: Math.round(percent.savings) })),
+  ];
+  if (percent.loans > 0) items.push(makeLegendItem("split-loans", t("money.loansPercent", { n: Math.round(percent.loans) })));
+  if (percent.unplanned > 0) {
+    items.push(makeLegendItem("split-unplanned", t("money.unplannedPercent", { n: Math.round(percent.unplanned) })));
+  }
+  items.push(makeElement("span", "aim", t("money.aim")));
+  byId("split-legend").replaceChildren(...items);
 }
 
 function makeLegendItem(colourClass, text) {
@@ -149,6 +211,7 @@ function drawCategoryRows(rows) {
 
 function makeCategoryRow(row) {
   const item = makeElement("div", "cat-row tappable");
+  item.dataset.category = row.category; // styling hook only: picks the category icon in style.css
   // The whole row opens the category pop-up (role=button so screen readers and keyboards can use it)
   item.setAttribute("role", "button");
   item.tabIndex = 0;
@@ -286,7 +349,10 @@ function buildCategoryGrid() {
     setValueText(button, I18n.CATEGORY_KEYS, row.category);
     button.type = "button";
     button.dataset.category = row.category;
-    button.addEventListener("click", () => pickCategory(row.category, true));
+    button.addEventListener("click", () => {
+      pickCategory(row.category, true);
+      showSuggestedHint(null); // the user chose it: no "Suggested" label, and no more auto-picking
+    });
     grid.append(button);
   });
 }
@@ -330,6 +396,7 @@ function openExpenseSheet(expense, startFixed) {
 
   chosenCategory = null;
   chosenKind = null;
+  showSuggestedHint(null);
   document.querySelectorAll("#category-grid .choice, [data-kind]").forEach((b) => b.classList.remove("active"));
   if (expense) {
     pickCategory(expense.category, false);
@@ -338,6 +405,57 @@ function openExpenseSheet(expense, startFixed) {
 
   openSheet("sheet-expense");
   if (!expense) byId("expense-amount").focus();
+}
+
+// ===== SUGGESTED CATEGORY (from the note; never overrides a category the user picked) =====
+const KEYWORDS_STORE = "categoryKeywords"; // the phone's copy of the backend keyword list (for offline)
+
+async function loadCategoryKeywords() {
+  try {
+    const data = await getCategoryKeywords();
+    localStorage.setItem(KEYWORDS_STORE, JSON.stringify(data.keywords));
+  } catch (error) {
+    // offline or storage blocked: the saved copy (if any) is used
+  }
+}
+
+function readCategoryKeywords() {
+  try {
+    return JSON.parse(localStorage.getItem(KEYWORDS_STORE)) || {};
+  } catch (error) {
+    return {};
+  }
+}
+
+// category = null hides the hint
+function showSuggestedHint(category) {
+  categorySuggested = Boolean(category);
+  const hint = byId("category-suggested");
+  hint.hidden = !category;
+  hint.textContent = category ? t("expense.suggested", { category: tCategory(category) }) : "";
+}
+
+function onExpenseNoteTyped() {
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(suggestFromNote, 300); // wait until typing stops
+}
+
+async function suggestFromNote() {
+  if (chosenCategory && !categorySuggested) return; // the user (or the expense being edited) already chose one
+  const text = byId("expense-note").value.trim();
+  if (!text) return;
+  const request = ++suggestCount;
+  let category = CategoryGuess.matchKeywords(text, readCategoryKeywords()); // offline guess first
+  try {
+    const answer = await suggestCategory(text); // own history beats keywords
+    if (answer.category) category = answer.category;
+  } catch (error) {
+    // offline: keep the keyword guess
+  }
+  if (request !== suggestCount || (chosenCategory && !categorySuggested)) return; // newer typing or the user picked
+  if (!category || !categoryList.some((row) => row.category === category)) return; // no match → leave as it is
+  if (category !== chosenCategory) pickCategory(category, true);
+  showSuggestedHint(category);
 }
 
 function readExpenseForm() {
@@ -780,6 +898,7 @@ function setValueText(element, keys, value) {
 // Called by app.js after a language switch: redraw the tab, and the category pop-up if it's open
 async function redrawMoneyTab() {
   if (moneyView === "savings") loadSavingsView(); // savings-view.js
+  if (categorySuggested) showSuggestedHint(chosenCategory); // "Suggested: …" in the new language
   await loadMoneyTab();
   if (byId("sheet-category").hidden) return;
   byId("cat-sheet-month").textContent = formatMonthName(shownMonth);
@@ -816,7 +935,6 @@ function startMoneyTab() {
   byId("switch-savings").addEventListener("click", () => showMoneyView("savings"));
 
   byId("add-expense-btn").addEventListener("click", () => openExpenseSheet(null));
-  byId("mic-btn").addEventListener("click", () => openExpenseSheet(null)); // voice is added in step 6
   byId("fixed-open").addEventListener("click", openFixedBillsList);
   byId("see-all-btn").addEventListener("click", openAllExpenses);
   byId("list-add-btn").addEventListener("click", () => openExpenseSheet(null, true));
@@ -825,6 +943,7 @@ function startMoneyTab() {
     button.addEventListener("click", () => pickKind(button.dataset.kind));
   });
   byId("expense-form").addEventListener("submit", saveExpenseForm);
+  byId("expense-note").addEventListener("input", onExpenseNoteTyped);
   byId("expense-delete").addEventListener("click", deleteShownExpense);
   byId("budget-form").addEventListener("submit", saveBudgetForm);
   byId("budget-remove").addEventListener("click", removeBudget);
@@ -841,6 +960,7 @@ function startMoneyTab() {
   byId("income-form").addEventListener("submit", saveIncomeForm);
   byId("income-delete").addEventListener("click", deleteShownIncome);
   startInsights(); // insights.js
+  loadCategoryKeywords(); // keep the keyword list on the phone so guessing works offline
 
   loadMoneyTab();
 }

@@ -12,12 +12,13 @@ from email_sender import send_otp_email
 from whatsapp_sender import WhatsAppFailed, WhatsAppNotConfigured, send_otp_whatsapp
 from models import CodeForm, EmailForm, LanguageForm, LoginForm, LoginSession, OtpCode, Profile, RegisterForm, User, utc_now
 from security import (get_password_problems, hash_password, hash_text, make_otp, make_session_token,
-                      password_matches, same_hash)
+                      password_matches, same_hash, waste_password_check)
 
 router = APIRouter(prefix="/api/auth")
 
 MAX_PASSWORD_TRIES = 3
 MAX_CODE_TRIES = 5                 # wrong guesses allowed per code
+MAX_CODE_TRIES_PER_HOUR = 15       # wrong guesses allowed over all codes (new codes can't reset the count)
 CODE_LIFETIME = timedelta(minutes=5)
 RESEND_WAIT = timedelta(seconds=30)  # before a new code can be sent
 RESEND_WINDOW = timedelta(minutes=30)  # "Resend" only works if a code was sent this recently
@@ -107,9 +108,7 @@ def require_user(request: Request):
 # ===== ROUTES =====
 @router.post("/register", status_code=201)
 def register(form: RegisterForm):
-    full_name = form.full_name.strip()
-    if not full_name:
-        raise AppError(400, "NAME_REQUIRED", "Please enter your full name.")
+    full_name = (form.full_name or "").strip() or None  # optional: the app shows the username instead
     if form.password != form.confirm_password:
         raise AppError(400, "PASSWORDS_DIFFERENT", "The two passwords don't match.")
     problems = get_password_problems(form.password)
@@ -137,6 +136,7 @@ def login(form: LoginForm):
     with open_db() as db:
         user = find_user(db, form.email)
         if user is None:
+            waste_password_check(form.password)  # same ~1 s wait as a real account: no hint that it doesn't exist
             raise AppError(401, "WRONG_LOGIN", "Wrong email or password.")
         if user.is_locked:
             raise AppError(423, "ACCOUNT_LOCKED", LOCKED_MESSAGE)
@@ -207,6 +207,10 @@ def verify_code(form: CodeForm, request: Request, response: Response):
             raise AppError(400, "LOGIN_AGAIN", "Please log in again to get a new code.")
         if code_row.expires_at < utc_now():
             raise AppError(410, "CODE_EXPIRED", "Your code has expired. Please request a new one.")
+        wrong_last_hour = db.scalar(select(func.coalesce(func.sum(OtpCode.attempts), 0)).where(
+            OtpCode.user_id == user.id, OtpCode.created_at > utc_now() - timedelta(hours=1)))
+        if wrong_last_hour >= MAX_CODE_TRIES_PER_HOUR:  # stops guessing codes by asking for new ones again and again
+            raise AppError(429, "TOO_MANY_CODE_TRIES", "Too many wrong codes. Please try again in an hour.")
 
         if not same_hash(code_row.code_hash, hash_text(form.code)):
             code_row.attempts += 1

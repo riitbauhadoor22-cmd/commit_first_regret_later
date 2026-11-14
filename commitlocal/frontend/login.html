@@ -4,10 +4,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title data-i18n="login.pageTitle">Log in</title>
-  <meta name="theme-color" content="#101e49">
+  <meta name="theme-color" content="#060c26">
   <script src="theme.js"></script> <!-- Brighter / Darker theme: set before the page is drawn -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@600;700;800&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -26,7 +29,8 @@
     <h1 data-i18n="login.welcome">Welcome</h1>
     <p class="subtitle" data-i18n="login.subtitle">Budget, track spending and save for your goals.</p>
 
-    <div class="tabs" role="tablist">
+    <!-- Mode switch (segmented toggle). The only primary "Log in" button is under the password. -->
+    <div class="tabs segmented" role="tablist" data-i18n-aria="login.modeSwitch" aria-label="Log in or register">
       <button id="tab-login" class="tab active" type="button" role="tab" aria-selected="true" data-i18n="login.logIn">Log in</button>
       <button id="tab-register" class="tab" type="button" role="tab" aria-selected="false" data-i18n="login.register">Register</button>
     </div>
@@ -50,7 +54,6 @@
 
     <!-- REGISTER FORM -->
     <form id="register-form" hidden>
-      <label><span data-i18n="login.fullName">Full name</span> <input id="reg-name" type="text" autocomplete="name" maxlength="100" required></label>
       <label><span data-i18n="login.username">Username</span> <input id="reg-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" required aria-describedby="reg-username-hint"></label>
       <p id="reg-username-hint" class="muted small" data-i18n="login.usernameHint">3–30 letters, numbers, dots, underscores or hyphens.</p>
       <label><span data-i18n="login.emailOptional">Email</span> <input id="reg-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false"></label>

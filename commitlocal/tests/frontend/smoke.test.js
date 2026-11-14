@@ -140,3 +140,14 @@ test(".env and venv are git-ignored and .env.example has no real values", () => 
     assert.equal(line.split("=")[1].trim(), "", line.split("=")[0] + " must be empty in .env.example");
   }
 });
+
+// ===== LOGIN PAGE: ONE PRIMARY "LOG IN" BUTTON =====
+test("login.html has exactly one primary Log in button (under the password); the mode switch is a segmented toggle", () => {
+  const html = read("login.html");
+  const loginForm = html.slice(html.indexOf('<form id="login-form"'), html.indexOf("</form>", html.indexOf('<form id="login-form"')));
+  const primary = [...html.matchAll(/<button[^>]*class="btn"[^>]*data-i18n="login\.logIn"/g)];
+  assert.equal(primary.length, 1, "only one .btn Log in button");
+  assert.ok(loginForm.indexOf('id="login-password"') < loginForm.indexOf('class="btn" type="submit"'), "button below the password");
+  assert.match(html, /class="tabs segmented"/); // the top Log in | Register is a toggle, not a second action button
+  assert.doesNotMatch(html, /id="reg-name"/); // the Full name field was removed
+});

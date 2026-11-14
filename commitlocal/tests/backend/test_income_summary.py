@@ -111,10 +111,11 @@ def test_summary_card_maths(logged_in):  # In, Out, Saved, Left to spend and the
     add_expense(logged_in, 1000, "Groceries", month + "-02")               # need
     add_expense(logged_in, 1500, "Shopping", month + "-03")                # want
     add_expense(logged_in, 500, "Shopping", month + "-03", kind="need")    # want category saved as a need
+    # A safety-net deposit only sets aside bank money: Saved = the monthly saving target (here the 20% default)
     assert logged_in.post("/api/savings/safety-net/add-money", json={"amount": 1000}).status_code == 200
     s = summary(logged_in, month)
-    assert (s["income"], s["spent"], s["saved"], s["left_to_spend"]) == (10000, 6000, 1000, 3000)
-    assert (s["needs_percent"], s["wants_percent"], s["savings_percent"]) == (45.0, 15.0, 10.0)
+    assert (s["income"], s["out"], s["saved"], s["left_to_spend"]) == (10000, 6000, 2000, 2000)
+    assert (s["needs_percent"], s["wants_percent"], s["savings_percent"]) == (45.0, 15.0, 20.0)
 
 
 def test_summary_with_no_income_has_no_division_by_zero(logged_in):  # income not given -> no %, no left to spend

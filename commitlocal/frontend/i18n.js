@@ -75,6 +75,21 @@
     return text;
   }
 
+  // ===== PLURALS =====
+  // A count-dependent text has two keys: "<base>.one" and "<base>.other". The language's rule (Intl.PluralRules)
+  // picks one: en "1 day" / "2 days"; fr counts 0 and 1 as singular ("0 jour", "1 jour"). Kreol uses fr-MU rules
+  // (its .one and .other texts are usually the same). {count} is filled in automatically.
+  function pluralCategory(count) {
+    try {
+      return new Intl.PluralRules(LOCALES[current] || "en-MU").select(Number(count) || 0) === "one" ? "one" : "other";
+    } catch (error) {
+      return Number(count) === 1 ? "one" : "other"; // very old browsers without Intl.PluralRules
+    }
+  }
+  function tPlural(baseKey, count, params) {
+    return t(baseKey + "." + pluralCategory(count), Object.assign({ count: count }, params));
+  }
+
   function hasKey(key) {
     return typeof (dictionaries.en || {})[key] === "string";
   }
@@ -102,6 +117,23 @@
 
   function formatDate(date, options) {
     return new Intl.DateTimeFormat(getLocale(), options).format(date);
+  }
+
+  // ===== MONEY (the ONE shared formatter: every amount on screen goes through here) =====
+  // Groups of 3 digits. en: "Rs 100,000" / "Rs 1,234.50"   fr + mfe: "Rs 100 000" / "Rs 1 234,50"
+  // options.whole = round to whole rupees. Not a number (NaN, Infinity, null) → "Rs 0", never "Rs NaN".
+  function formatMoney(amount, options, language) {
+    let n = Number(amount);
+    if (!isFinite(n)) n = 0;
+    if (options && options.whole) n = Math.round(n);
+    const english = (language || current) === "en";
+    const cents = Math.round(Math.abs(n) * 100); // whole number of cents: no floating-point leftovers
+    const digits = String(Math.floor(cents / 100));
+    const groups = [];
+    for (let end = digits.length; end > 0; end -= 3) groups.unshift(digits.slice(Math.max(end - 3, 0), end)); // 3 digits each
+    const grouped = groups.join(english ? "," : "\u00a0"); // fr / mfe: no-break space, so a number never splits
+    const paise = cents % 100 ? (english ? "." : ",") + String(cents % 100).padStart(2, "0") : "";
+    return (n < 0 && cents ? "-" : "") + "Rs " + grouped + paise;
   }
 
   // ===== APPLY TO THE PAGE =====
@@ -169,7 +201,7 @@
 
   const I18n = {
     LANGUAGES, CATEGORY_KEYS, INCOME_TYPE_KEYS, ready,
-    t, hasKey, tCategory, tIncomeType, setText, setLanguage, getLocale, formatDate,
+    t, tPlural, hasKey, tCategory, tIncomeType, setText, setLanguage, getLocale, formatDate, formatMoney,
     applyTranslations, useDictionaries,
     getLanguage: () => current,
   };
@@ -177,6 +209,7 @@
   if (typeof window !== "undefined") {
     window.I18n = I18n; // browser: short global names for the other scripts
     window.t = t;
+    window.tPlural = tPlural;
     window.setText = setText;
     window.setLanguage = setLanguage;
     window.tCategory = tCategory;

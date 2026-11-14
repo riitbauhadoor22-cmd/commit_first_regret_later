@@ -1,7 +1,7 @@
 # routes/profile.py — the Profile tab's "My account" part. Every route works on the LOGGED-IN user only
 # (the id comes from the session cookie via require_user, never from the browser).
 #   GET /api/profile             → {full_name, username, email, phone, occupation}  (NEVER the password or its hash)
-#   PUT /api/profile/name        → {full_name}                     same rules as registration
+#   PUT /api/profile/name        → {full_name}                     optional (old clients only; the app no longer shows it)
 #   PUT /api/profile/username    → {username}                      3–30 letters/numbers/. _ -, lowercase, unique
 #   PUT /api/profile/email       → {email, current_password}       lowercase, unique, needs the current password;
 #                                  empty = remove (only while a phone number is left)
@@ -31,7 +31,7 @@ def load_account(db, user_id):
     user = db.get(User, user_id)
     profile = db.scalar(select(Profile).where(Profile.user_id == user_id))
     if profile is None:
-        profile = Profile(user_id=user_id, full_name="")
+        profile = Profile(user_id=user_id)  # full_name is optional (NULL)
         db.add(profile)
     return user, profile
 
@@ -63,9 +63,7 @@ def read_profile(user_id: uuid.UUID = Depends(require_user)):
 
 @router.put("/name")
 def change_name(form: NameForm, user_id: uuid.UUID = Depends(require_user)):
-    full_name = form.full_name.strip()
-    if not full_name:
-        raise AppError(400, "NAME_REQUIRED", "Please enter your full name.")
+    full_name = (form.full_name or "").strip() or None  # kept for old clients; empty = no name
     with open_db() as db:
         user, profile = load_account(db, user_id)
         profile.full_name = full_name

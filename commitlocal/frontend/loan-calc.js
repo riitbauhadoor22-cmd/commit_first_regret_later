@@ -18,11 +18,11 @@
     return Math.round(n * 100) / 100;
   }
 
-  // 12345.6 → "Rs 12,346" (whole rupees, Indian grouping). Bad input → "Rs 0", never "Rs NaN".
+  // 12345.6 → "Rs 12,346" (whole rupees, shared formatter in i18n.js). Bad input → "Rs 0", never "Rs NaN".
   function formatRupees(amount) {
-    const n = Number(amount);
-    if (!isFinite(n)) return "Rs 0";
-    return "Rs " + Math.round(n).toLocaleString("en-IN");
+    // Whole rupees through the shared formatter (i18n.js) when it's loaded; same "Rs 12,345" shape in Node tests
+    const shared = typeof I18n !== "undefined" ? I18n : (typeof require === "function" ? require("./i18n.js") : null);
+    return shared.formatMoney(amount, { whole: true });
   }
 
   // 40 → "3 years 4 months"

@@ -7,9 +7,10 @@ import hashlib
 import json
 
 from info_status import is_known
-from money import (get_expenses_in_month, get_fixed_bills, get_goal_statuses, get_monthly_income, get_monthly_target, get_months_left,
-                   get_percent, get_safety_net, get_saved_in_month, get_total, get_total_by_kind, get_total_spent,
+from money import (get_expenses_in_month, get_fixed_bills, get_goal_statuses, get_months_left,
+                   get_percent, get_safety_net, get_total, get_total_spent,
                    to_money)
+from services.month_summary import build_month_summary
 
 # 50/30/20 is a GUIDE, not a rule: needs 50%, wants 30%, savings + debt repayments 20% of take-home income
 TARGETS = {"needs": 50, "wants": 30, "savings_and_debt": 20}
@@ -65,7 +66,8 @@ def get_goal_progress(goals, monthly_target, today):
     for goal in get_goal_statuses(goals, monthly_target, today):
         rows.append({"name": goal["name"], "category": goal["category"], "target": goal["target_amount"],
                      "saved": goal["saved_amount"], "percent": goal["percent"],
-                     "needs_per_month": goal["needs_per_month"], "months_left": get_months_left(today, goal["deadline"]),
+                     "needs_per_month": goal["needs_per_month"], "plan": goal["plan"],
+                     "months_left": get_months_left(today, goal["deadline"]) if goal["plan"] == "ok" else None,
                      "status": goal["status"], "priority": goal["priority_name"]})
     return rows
 
@@ -121,23 +123,18 @@ def analyse_month(incomes, expenses, deposits, goals, savings, loans, info, mont
     """Everything the insights card shows, worked out without AI.
     info = {"income", "expenses", "loans", "savings"}: provided / none / missing (info_status.py).
     Missing -> None (unknown), never 0. "none" (the user said so) -> 0.
-    Income entries are treated as take-home (money that actually reaches you). Savings = deposits into goals
-    and the safety net this month; loans = monthly repayments of the saved loans. Deposits and loan repayments
-    are not expenses, so nothing is counted twice."""
-    income = get_monthly_income(incomes, month) if is_known(info["income"]) else None
+    Income entries are treated as take-home (money that actually reaches you). In, Out, Savings (saved_this_month)
+    and remaining come from the SAME shared function as the Money tab (services/month_summary.py); loans = saved
+    loan repayments not already recorded as a fixed bill, so nothing is counted twice. The bank balance is money
+    already saved: it is never part of this month's numbers."""
+    flows = build_month_summary(incomes, expenses, loans, savings, info, month)
+    income = flows["income"]
     expenses_known = is_known(info["expenses"])
-    needs = get_total_by_kind(expenses, month, "need") if expenses_known else None
-    wants = get_total_by_kind(expenses, month, "want") if expenses_known else None
-    saved = get_saved_in_month(deposits, month)
-    if saved == 0 and not is_known(info["savings"]):
-        saved = None
-    loan_payments = None
-    if is_known(info["loans"]):
-        loan_payments = get_total([{"amount": loan["monthly_payment"]} for loan in loans])
-    remaining = None
-    if income is not None and expenses_known:
-        remaining = to_money(income - needs - wants - (saved or 0) - (loan_payments or 0))
-    monthly_target = get_monthly_target(savings["monthly_target"], incomes, month)
+    needs, wants = flows["needs"], flows["wants"]
+    saved = flows["saved"]
+    loan_payments = flows["loan_repayments"]
+    remaining = flows["left_to_spend"]
+    monthly_target = flows["monthly_target"]
     spending_change = get_spending_change(expenses, month) if info["expenses"] == "provided" else None
     analysis = {
         "month": month,
@@ -145,7 +142,8 @@ def analyse_month(incomes, expenses, deposits, goals, savings, loans, info, mont
         "take_home_income": income,
         "needs": needs,
         "wants": wants,
-        "savings": saved,
+        "savings": saved,  # saved_this_month (the planned monthly saving)
+        "bank_savings_balance": savings.get("bank_balance"),  # money already saved (None = not added)
         "loan_repayments": loan_payments,
         "remaining": remaining,
         "remaining_excludes_loans": remaining is not None and loan_payments is None,
@@ -166,6 +164,49 @@ def analyse_month(incomes, expenses, deposits, goals, savings, loans, info, mont
     return analysis
 
 
+# ===== QUICK INSIGHTS (no AI: used when Groq isn't set up or fails) =====
+MAX_QUICK_GOALS = 3
+
+
+def build_quick_insights(analysis):
+    """Short rule-based tips from the user's own numbers: 50/30/20 comparison, biggest spending category,
+    savings goal progress and loan repayment share. Codes + numbers; the frontend translates them (insights.quick.*).
+    Unknown topics give an "add it" tip instead of a guess."""
+    tips = []
+    income = analysis["take_home_income"]
+    if income is None or income <= 0:
+        tips.append({"code": "ADD_INCOME", "params": {}})
+    else:
+        for row in analysis["split"]:
+            if row["percent"] is not None:
+                tips.append({"code": "SPLIT", "params": {"group": row["group"], "percent": round(row["percent"]),
+                                                         "aim": row["target_percent"]}})
+    categories = analysis["categories"]
+    if categories:
+        spent = sum(row["amount"] for row in categories) or 1  # top categories' total (never ÷ 0)
+        top = categories[0]
+        tips.append({"code": "TOP_CATEGORY", "params": {"category": top["category"], "amount": top["amount"],
+                                                        "percent": round(top["amount"] / spent * 100)}})
+    elif analysis["needs"] is None:
+        tips.append({"code": "ADD_EXPENSES", "params": {}})
+    for goal in analysis["goals"][:MAX_QUICK_GOALS]:
+        if goal["status"] == "Done":
+            code = "GOAL_DONE"
+        elif goal["plan"] == "ok":
+            code = "GOAL_PLAN"
+        else:
+            code = "GOAL_LATE" if goal["plan"] == "deadline_passed" else "GOAL_NO_PLAN"
+        tips.append({"code": code, "params": {"name": goal["name"], "percent": round(goal["percent"]),
+                                              "amount": goal["needs_per_month"]}})
+    loans = analysis["loan_repayments"]
+    if loans:
+        if income:
+            tips.append({"code": "LOAN_SHARE", "params": {"amount": loans, "percent": round(loans / income * 100)}})
+        else:
+            tips.append({"code": "LOAN_AMOUNT", "params": {"amount": loans}})
+    return tips
+
+
 # ===== WHAT MAY BE SENT TO GROQ (compact, anonymous, only what the user gave) =====
 def build_ai_summary(analysis):
     """Only calculated figures the user actually gave: no goal names, notes, email or ids (goals = "Goal 1"...).
@@ -176,7 +217,8 @@ def build_ai_summary(analysis):
         "take_home_income": analysis["take_home_income"],
         "needs": analysis["needs"],
         "wants": analysis["wants"],
-        "savings_contributions": analysis["savings"],
+        "saved_this_month": analysis["savings"],  # planned monthly saving, part of this month's money
+        "bank_savings_balance": analysis.get("bank_savings_balance"),  # already saved, NOT this month's money
         "loan_repayments": analysis["loan_repayments"],
         "remaining": analysis["remaining"],
         "fixed_bills_total": analysis["fixed_bills_total"],
@@ -195,7 +237,7 @@ def build_ai_summary(analysis):
         summary["top_categories"] = analysis["categories"]
     goals = [{"label": f"Goal {number}", "category": goal["category"] or "General", "target": goal["target"],
               "saved": goal["saved"], "percent": goal["percent"], "needs_per_month": goal["needs_per_month"],
-              "months_left": goal["months_left"], "status": goal["status"], "priority": goal["priority"]}
+              "months_left": goal["months_left"], "plan": goal["plan"], "status": goal["status"], "priority": goal["priority"]}
              for number, goal in enumerate(analysis["goals"][:MAX_GOALS_SENT], start=1)]
     if goals:
         summary["goals"] = goals

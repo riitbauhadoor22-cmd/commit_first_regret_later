@@ -23,14 +23,9 @@ function makeTextElement(tag, className, key, params) {
   return element;
 }
 
-// 1234.5 -> "Rs 1,234.50"   150000 -> "Rs 1,50,000"
+// 1234.5 -> "Rs 1,234.50" (en) / "Rs 1 234,50" (fr, mfe): the shared formatter in i18n.js (sign shown by formatIn/Out)
 function formatMoney(amount) {
-  const hasPaise = Math.round(Math.abs(amount) * 100) % 100 !== 0;
-  const text = Math.abs(amount).toLocaleString("en-IN", {
-    minimumFractionDigits: hasPaise ? 2 : 0,
-    maximumFractionDigits: 2,
-  });
-  return "Rs " + text;
+  return I18n.formatMoney(Math.abs(Number(amount)));
 }
 
 // Income: "+Rs 500" (green). Expense: "−Rs 500" (orange).
@@ -208,7 +203,7 @@ function setUpTabs() {
 async function checkLogin() {
   try {
     const me = await getMe(); // goes to login.html by itself if not logged in
-    currentUserName = me.full_name || ""; // for the Dashboard welcome (dashboard.js)
+    currentUserName = me.username || ""; // Dashboard welcome "Hi asha" (dashboard.js); no name → "Hi there"
     // The account's saved language wins over this browser's, so the choice follows the user to other devices
     if (me.language && me.language !== I18n.getLanguage()) await setLanguage(me.language);
     window.addEventListener("i18n:change", saveLanguageToAccount); // only after the server's choice is applied
@@ -223,6 +218,14 @@ async function checkLogin() {
 function askToLogOut() {
   openSheet("sheet-logout");
   byId("logout-cancel").focus();
+}
+
+// ===== SETTINGS (gear at the top right of every page) =====
+// Opens the Settings pop-up: theme (profile-tab.js + theme.js), language (i18n.js), Log out (above)
+function openSettings() {
+  drawThemeButtons(); // in profile-tab.js: the pressed button always matches the theme on screen
+  openSheet("sheet-settings");
+  byId("sheet-settings").querySelector("[data-close]").focus();
 }
 
 // "Log out" in the pop-up: the server ends the session and clears the cookie, then the login page opens
@@ -272,6 +275,9 @@ async function startApp() {
     button.addEventListener("click", askToLogOut);
   });
   byId("logout-confirm").addEventListener("click", logOutAndLeave);
+  document.querySelectorAll(".settings-btn").forEach((button) => {
+    button.addEventListener("click", openSettings);
+  });
   registerServiceWorker();
   if (await checkLogin()) {
     startMoneyTab();    // in money-tab.js

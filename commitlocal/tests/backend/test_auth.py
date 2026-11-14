@@ -30,7 +30,7 @@ def test_register_duplicate_email(client):  # same email twice (any case) -> 409
     assert res.status_code == 409 and res.json()["code"] == "EMAIL_TAKEN"
 
 
-@pytest.mark.parametrize("missing", ["full_name", "username", "email", "password", "confirm_password"])
+@pytest.mark.parametrize("missing", ["username", "email", "password", "confirm_password"])
 def test_register_missing_field(client, missing):  # each missing field -> 422, never 500
     body = form()
     del body[missing]
@@ -43,9 +43,15 @@ def test_register_weak_password(client, password):  # each missing password rule
     assert res.status_code == 400 and res.json()["code"] == "PASSWORD_WEAK"
 
 
-def test_register_passwords_different_and_blank_name(client):  # mismatch / spaces-only name -> 400
+def test_register_passwords_different(client):  # mismatch -> 400
     assert client.post(REGISTER, json=form(confirm_password=PASSWORD + "x")).json()["code"] == "PASSWORDS_DIFFERENT"
-    assert client.post(REGISTER, json=form(full_name="   ")).json()["code"] == "NAME_REQUIRED"
+
+
+def test_register_works_without_full_name(client):  # the Full name field was removed; old clients may still send it
+    body = form()
+    del body["full_name"]
+    assert client.post(REGISTER, json=body).status_code == 201
+    assert client.post(REGISTER, json=form(full_name="   ", username="asha_b", email="b@example.com")).status_code == 201
 
 
 def test_register_bad_email(client):  # not an email -> 422 INVALID_EMAIL

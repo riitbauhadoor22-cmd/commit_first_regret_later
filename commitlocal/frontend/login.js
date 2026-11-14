@@ -209,7 +209,6 @@ async function registerUser(event) {
   const button = event.submitter;
   button.disabled = true;
   const result = await postJson("/api/auth/register", {
-    full_name: byId("reg-name").value,
     username: username,
     email: email || null, // empty = not given (a phone number is enough)
     phone: phone || null,

@@ -16,3 +16,6 @@ backend/DATA/lending_club/
 # Big downloads and AI prompt notes - keep out of git
 *.zip
 *_prompt.md
+smart_features_proposal.txt
+# Reference screenshots of other apps (third-party images)
+designs/
