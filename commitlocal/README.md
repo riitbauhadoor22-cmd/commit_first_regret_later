@@ -79,6 +79,6 @@ node --test tests/frontend
 
 ## Live demo (hackathon)
 
-- Link: https://d73e3336bf7339.app.lhr.life (temporary tunnel from the team laptop via localhost.run; works while the laptop server is running)
+- Link: https://bd7937899f781d.app.lhr.life (temporary tunnel from the team laptop via localhost.run; works while the laptop server is running)
 - QR code: [demo-qr.png](demo-qr.png)
 - Demo mode: the login code is also shown on screen (DEMO_SHOW_OTP=true) so the demo never gets stuck.
