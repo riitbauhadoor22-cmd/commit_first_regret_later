@@ -66,6 +66,9 @@ commitlocal/
     ├── models.py               ← ✅ incoming forms (Pydantic) + the database tables (SQLAlchemy ORM, see section 6)
     ├── migrate_old_db.py       ← ✅ ONE-TIME: copies users + data from the old finance.db into the new tables
     ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py, 0005_ai_insights.py, 0006_optional_info.py, 0007_dashboard.py, 0008_profile.py, 0009_full_name_optional.py). env.py switches SQLite foreign keys OFF while migrating, so a "batch" table copy can never cascade-delete rows
+    ├── config.py               ← ✅ APP_ENV / ENV = production | development (is_production(), docs_settings(), log_app_mode())
+    ├── rate_limit.py           ← ✅ in-memory per-IP / per-account limits (hit / check / add / reset) → 429 TOO_MANY_REQUESTS
+    ├── requirements.txt        ← ✅ runtime packages, exact versions · requirements-dev.txt = + pytest (tests only)
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), password_matches() (never crashes on > 72 bytes), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
@@ -542,6 +545,13 @@ venv\Scripts\python migrate_old_db.py                              # ONE TIME: c
 2. In `backend/.env`: `DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require` (`postgres://…` also works; `database.py` switches it to the `psycopg` driver).
 3. `venv\Scripts\alembic upgrade head` (or just start the app), then optionally `venv\Scripts\python migrate_old_db.py`.
 
+### Production (Render + Neon) ✅
+- `render.yaml` (in this folder; Blueprint Path `commitlocal/render.yaml`): rootDir `commitlocal/backend`, start `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"`, health check `GET /health` → `{"status": "ok"}` (no login, no DB, so Neon can sleep).
+- `APP_ENV=production` (config.py): session cookie always Secure + HttpOnly + SameSite=Lax (dev: Secure only on https), `Strict-Transport-Security: max-age=31536000`, no /docs /redoc /openapi.json. Always: Referrer-Policy strict-origin-when-cross-origin, X-Frame-Options DENY, nosniff, CSP. Any crash → 500 `SERVER_ERROR` with a friendly message (errors.py), never a stack trace.
+- No CORS middleware: the frontend is served by the same app (same origin), so browsers need none; other sites can't call the API with the cookie.
+- Rate limits (routes/auth.py constants, rate_limit.py; in memory, reset on restart): login 20 / 15 min per IP + 10 per account; register 10 / hour per IP; verify-code 30 / 15 min per IP and **10 wrong codes / hour per IP** (below the 15 per account, so one attacker can't burn a victim's guesses); resend-code + send-login-code 10 / 15 min per IP; codes sent: **10 / day per account** (counted in otp_codes, survives restarts; send-login-code then quietly sends nothing) and 20 / day per IP. Over a limit → 429 `TOO_MANY_REQUESTS` + Retry-After. Tests: conftest turns the limiter off; test_rate_limit.py turns it on.
+- Profile username / email / phone changes: a UNIQUE clash found only by the database (two people at once) → 409 with USERNAME_TAKEN / EMAIL_IN_USE / PHONE_TAKEN.
+
 ### API addresses
 All money routes need you to be logged in (401 otherwise).
 
@@ -689,7 +699,7 @@ uvicorn main:app --reload --host 0.0.0.0 --port 8000
 Then open **http://localhost:8000/login.html**. FastAPI serves both the app and the API from this one address.
 
 ### Run the tests
-From the project folder (the one with `backend/` and `tests/`):
+Install the test tools once: `backend\venv\Scripts\pip install -r backend/requirements-dev.txt`. From the project folder (the one with `backend/` and `tests/`):
 ```bash
 backend\venv\Scripts\python -m pytest tests/backend -q      # Mac/Linux: backend/venv/bin/python -m pytest tests/backend -q
 ```

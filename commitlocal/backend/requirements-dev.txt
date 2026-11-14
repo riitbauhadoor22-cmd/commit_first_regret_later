@@ -1,0 +1,3 @@
+# Extra packages for running the tests (not needed on the server): pip install -r requirements-dev.txt
+-r requirements.txt
+pytest==9.2.0

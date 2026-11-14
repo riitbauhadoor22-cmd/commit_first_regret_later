@@ -75,6 +75,13 @@ async def validation_error_handler(request: Request, error: RequestValidationErr
                                                   "code": code_for_validation(errors), "params": {}})
 
 
+async def server_error_handler(request: Request, error: Exception):
+    """Any unexpected crash: a friendly message, never a stack trace (Starlette still logs it in the server log)."""
+    return JSONResponse(status_code=500, content={
+        "detail": "Something went wrong on our side. Please try again.", "code": "SERVER_ERROR", "params": {}})
+
+
 def add_error_handlers(app):
     app.add_exception_handler(AppError, app_error_handler)
     app.add_exception_handler(RequestValidationError, validation_error_handler)
+    app.add_exception_handler(Exception, server_error_handler)  # 500s in every mode

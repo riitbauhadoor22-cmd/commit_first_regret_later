@@ -11,6 +11,7 @@ BACKEND = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND))  # so "import main", "import database" find the backend files
 # Never touch the real database: anything opened before a test starts uses a throwaway in-memory one
 os.environ["DATABASE_URL"] = "sqlite://"
+os.environ["APP_ENV"] = "development"  # tests that need production switch it with monkeypatch
 # Groq: a fake key and fixed limits, set BEFORE backend/.env is read (real .env values never apply in tests)
 os.environ.update({"GROQ_API_KEY": "test-key", "GROQ_MODEL": "", "AI_DAILY_LIMIT": "5", "AI_COOLDOWN_SECONDS": "60",
                    "AI_MAX_OUTPUT_TOKENS": "1000", "AI_MAX_INPUT_CHARS": "6000", "AI_TIMEOUT_SECONDS": "25"})
@@ -36,6 +37,17 @@ def new_client(tmp_path):
     from fastapi.testclient import TestClient
     yield lambda: TestClient(main.app)
     database.engine.dispose()  # close the file so the temp folder can be deleted
+
+
+@pytest.fixture(autouse=True)
+def no_rate_limits():
+    """EVERY test: the in-memory rate limiter is off and empty (test_rate_limit.py turns it on)."""
+    import rate_limit
+    rate_limit.reset()
+    rate_limit.enabled = False
+    yield
+    rate_limit.enabled = True
+    rate_limit.reset()
 
 
 @pytest.fixture

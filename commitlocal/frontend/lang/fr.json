@@ -347,6 +347,8 @@
   "error.CODE_EXPIRED": "Ton code a expiré. Demandes-en un nouveau.",
   "error.WRONG_CODE": "Code incorrect. Vérifie tes e-mails et réessaie.",
   "error.TOO_MANY_CODE_TRIES": "Trop de codes incorrects. Réessaie dans une heure.",
+  "error.TOO_MANY_REQUESTS": "Trop d'essais. Attends un peu et réessaie.",
+  "error.SERVER_ERROR": "Un problème est survenu de notre côté. Réessaie.",
   "error.EXPENSE_NOT_FOUND": "Dépense introuvable.",
   "error.INCOME_NOT_FOUND": "Revenu introuvable.",
   "error.GOAL_NOT_FOUND": "Objectif introuvable.",

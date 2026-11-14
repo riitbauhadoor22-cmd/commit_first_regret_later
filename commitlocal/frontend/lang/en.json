@@ -347,6 +347,8 @@
   "error.CODE_EXPIRED": "Your code has expired. Please request a new one.",
   "error.WRONG_CODE": "Wrong code. Please check your email and try again.",
   "error.TOO_MANY_CODE_TRIES": "Too many wrong codes. Please try again in an hour.",
+  "error.TOO_MANY_REQUESTS": "Too many tries. Please wait a little and try again.",
+  "error.SERVER_ERROR": "Something went wrong on our side. Please try again.",
   "error.EXPENSE_NOT_FOUND": "Expense not found.",
   "error.INCOME_NOT_FOUND": "Income not found.",
   "error.GOAL_NOT_FOUND": "Goal not found.",

@@ -6,6 +6,8 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, func, select, update
 
+import rate_limit
+from config import is_production
 from database import open_db
 from errors import AppError
 from email_sender import send_otp_email
@@ -24,6 +26,15 @@ RESEND_WAIT = timedelta(seconds=30)  # before a new code can be sent
 RESEND_WINDOW = timedelta(minutes=30)  # "Resend" only works if a code was sent this recently
 SESSION_LIFETIME = timedelta(days=7)  # stay logged in for 7 days
 COOKIE_NAME = "session"
+# Rate limits (rate_limit.py, in memory): (most requests, per this many seconds)
+LOGIN_PER_IP = (20, 15 * 60)
+LOGIN_PER_ACCOUNT = (10, 15 * 60)
+REGISTER_PER_IP = (10, 60 * 60)
+VERIFY_PER_IP = (30, 15 * 60)
+RESEND_PER_IP = (10, 15 * 60)        # resend-code and send-login-code
+WRONG_CODES_PER_IP = (10, 60 * 60)   # below MAX_CODE_TRIES_PER_HOUR: one attacker can't use up a victim's hourly tries
+CODES_PER_DAY_PER_IP = (20, 24 * 60 * 60)
+CODES_PER_DAY_PER_ACCOUNT = 10       # counted in the database (otp_codes), so a restart doesn't reset it
 LOCKED_MESSAGE = "Your account is locked after 3 wrong passwords. Tap 'Send me a login code'."
 
 
@@ -50,6 +61,11 @@ def code_sent_recently(db, user_id):
     return last is not None and last > utc_now() - RESEND_WAIT
 
 
+def codes_sent_today(db, user_id):
+    return db.scalar(select(func.count()).select_from(OtpCode).where(
+        OtpCode.user_id == user_id, OtpCode.created_at > utc_now() - timedelta(days=1)))
+
+
 def deliver_login_code(user, code, phone):
     """The ONE place that decides where a login code goes. Returns "email" or "whatsapp".
     Accounts with an email → Gmail (email_sender.py). Phone-only accounts → WhatsApp (whatsapp_sender.py, Twilio sandbox).
@@ -72,14 +88,25 @@ def deliver_login_code(user, code, phone):
     return "email"
 
 
-def send_new_code(db, user):
+def send_new_code(db, user, ip):
     """Make a new 6-digit code, save its hash, and send it. Older codes stop working. Returns "email" or "whatsapp".
-    A sending problem → 503 and nothing is saved (open_db undoes the new code)."""
+    A sending problem → 503 and nothing is saved (open_db undoes the new code).
+    Daily caps (per account and per IP) → 429 TOO_MANY_REQUESTS: stops someone flooding a mailbox / phone."""
+    if codes_sent_today(db, user.id) >= CODES_PER_DAY_PER_ACCOUNT:
+        raise rate_limit.too_many(60 * 60)
+    rate_limit.check("codes-ip:" + ip, *CODES_PER_DAY_PER_IP)
     code = make_otp()
     db.execute(update(OtpCode).where(OtpCode.user_id == user.id, OtpCode.used.is_(False)).values(used=True))
     db.add(OtpCode(user_id=user.id, code_hash=hash_text(code), expires_at=utc_now() + CODE_LIFETIME))
     phone = db.scalar(select(Profile.phone).where(Profile.user_id == user.id))
-    return deliver_login_code(user, code, phone)
+    channel = deliver_login_code(user, code, phone)
+    rate_limit.add("codes-ip:" + ip)  # only codes really sent count
+    return channel
+
+
+def cookie_is_secure(request):
+    """Production: always Secure. Development: only on https, so http://localhost keeps working."""
+    return is_production() or request.url.scheme == "https"
 
 
 def get_current_user(request):
@@ -107,7 +134,8 @@ def require_user(request: Request):
 
 # ===== ROUTES =====
 @router.post("/register", status_code=201)
-def register(form: RegisterForm):
+def register(form: RegisterForm, request: Request):
+    rate_limit.hit("register-ip:" + rate_limit.client_ip(request), *REGISTER_PER_IP)
     full_name = (form.full_name or "").strip() or None  # optional: the app shows the username instead
     if form.password != form.confirm_password:
         raise AppError(400, "PASSWORDS_DIFFERENT", "The two passwords don't match.")
@@ -131,8 +159,11 @@ def register(form: RegisterForm):
 
 
 @router.post("/login")
-def login(form: LoginForm):
+def login(form: LoginForm, request: Request):
     """Step 1: check the password. If correct, send a 6-digit code (step 2 is /verify-code). form.email = email or phone."""
+    ip = rate_limit.client_ip(request)
+    rate_limit.hit("login-ip:" + ip, *LOGIN_PER_IP)
+    rate_limit.hit("login-account:" + form.email.strip().lower(), *LOGIN_PER_ACCOUNT)
     with open_db() as db:
         user = find_user(db, form.email)
         if user is None:
@@ -154,7 +185,7 @@ def login(form: LoginForm):
 
         user.failed_attempts = 0
         db.commit()  # the reset is kept even if sending the code fails
-        channel = send_new_code(db, user)
+        channel = send_new_code(db, user, ip)
     if channel == "whatsapp":
         return code_sent_reply("Password correct. We sent a 6-digit code to your WhatsApp.", "CODE_SENT_WHATSAPP")
     return code_sent_reply("Password correct. We emailed you a 6-digit code.", "CODE_SENT")
@@ -167,8 +198,10 @@ def code_sent_reply(message, code):
 
 
 @router.post("/resend-code")
-def resend_code(form: EmailForm):
+def resend_code(form: EmailForm, request: Request):
     """Email a fresh code to someone already on the code screen (30-second cooldown)."""
+    ip = rate_limit.client_ip(request)
+    rate_limit.hit("resend-ip:" + ip, *RESEND_PER_IP)
     with open_db() as db:
         user = find_user(db, form.email)
         last = user and db.scalar(select(func.max(OtpCode.created_at)).where(OtpCode.user_id == user.id))
@@ -176,19 +209,23 @@ def resend_code(form: EmailForm):
             raise AppError(400, "LOGIN_AGAIN", "Please log in again to get a new code.")
         if code_sent_recently(db, user.id):
             raise AppError(429, "RESEND_WAIT", "Please wait a few seconds before asking for another code.")
-        channel = send_new_code(db, user)
+        channel = send_new_code(db, user, ip)
     if channel == "whatsapp":
         return code_sent_reply("We sent a new 6-digit code to your WhatsApp.", "CODE_RESENT_WHATSAPP")
     return code_sent_reply("We emailed you a new 6-digit code.", "CODE_RESENT")
 
 
 @router.post("/send-login-code")
-def send_login_code(form: EmailForm):
+def send_login_code(form: EmailForm, request: Request):
     """For locked accounts: email a code that logs in and unlocks the account."""
+    ip = rate_limit.client_ip(request)
+    rate_limit.hit("resend-ip:" + ip, *RESEND_PER_IP)
     with open_db() as db:
         user = find_user(db, form.email)
-        if user and user.is_locked and not code_sent_recently(db, user.id):
-            send_new_code(db, user)
+        # account's daily cap reached → quietly send nothing (an error would show the account exists)
+        if (user and user.is_locked and not code_sent_recently(db, user.id)
+                and codes_sent_today(db, user.id) < CODES_PER_DAY_PER_ACCOUNT):
+            send_new_code(db, user, ip)
     # Same reply every time, so nobody can use this to check which emails / phones have accounts
     return {"message": "If this account is locked, we've sent a login code to its email or phone.",
             "code": "LOCKED_CODE_SENT"}
@@ -197,6 +234,9 @@ def send_login_code(form: EmailForm):
 @router.post("/verify-code")
 def verify_code(form: CodeForm, request: Request, response: Response):
     """Step 2: check the emailed code. If correct, log in (and unlock the account)."""
+    ip = rate_limit.client_ip(request)
+    rate_limit.hit("verify-ip:" + ip, *VERIFY_PER_IP)
+    rate_limit.check("wrong-code-ip:" + ip, *WRONG_CODES_PER_IP)  # M1: wrong guesses are counted per IP too
     with open_db() as db:
         user = find_user(db, form.email)
         code_row = None
@@ -216,6 +256,7 @@ def verify_code(form: CodeForm, request: Request, response: Response):
             code_row.attempts += 1
             code_row.used = code_row.attempts >= MAX_CODE_TRIES
             db.commit()
+            rate_limit.add("wrong-code-ip:" + ip)
             raise AppError(400, "WRONG_CODE", "Wrong code. Please check your messages and try again.")
 
         token = make_session_token()
@@ -223,9 +264,10 @@ def verify_code(form: CodeForm, request: Request, response: Response):
         user.failed_attempts, user.is_locked = 0, False
         db.add(LoginSession(token_hash=hash_text(token), user_id=user.id, expires_at=utc_now() + SESSION_LIFETIME))
 
-    # httponly = JavaScript can't read the cookie, so a bad script can't steal it
+    # httponly = JavaScript can't read the cookie, so a bad script can't steal it.
+    # secure = only sent over https: always in production (Render's proxy talks http to us), so don't trust the scheme
     response.set_cookie(COOKIE_NAME, token, max_age=int(SESSION_LIFETIME.total_seconds()), httponly=True,
-                        samesite="lax", secure=request.url.scheme == "https")
+                        samesite="lax", secure=cookie_is_secure(request))
     return {"message": "Logged in.", "code": "LOGGED_IN"}
 
 
@@ -252,5 +294,5 @@ def logout(request: Request, response: Response):
     if token:
         with open_db() as db:
             db.execute(delete(LoginSession).where(LoginSession.token_hash == hash_text(token)))
-    response.delete_cookie(COOKIE_NAME)
+    response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=cookie_is_secure(request))
     return {"message": "Logged out.", "code": "LOGGED_OUT"}

@@ -1,0 +1,34 @@
+# render.yaml — Render Blueprint for the app (free Web Service). The database is a free hosted PostgreSQL
+# (Neon or Supabase): paste its URL as DATABASE_URL. Secrets have sync: false = you type them in Render's dashboard.
+# This file lives in commitlocal/: when creating the Blueprint set "Blueprint Path" to commitlocal/render.yaml.
+services:
+  - type: web
+    name: my-money
+    runtime: python
+    plan: free
+    rootDir: commitlocal/backend
+    buildCommand: pip install -r requirements.txt
+    # Database tables are brought up to date (Alembic) when the app starts. No --reload in production.
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.0
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: GMAIL_ADDRESS
+        sync: false
+      - key: GMAIL_APP_PASSWORD
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_WHATSAPP_FROM
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        sync: false

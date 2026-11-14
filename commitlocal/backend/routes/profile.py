@@ -14,6 +14,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 
 from database import open_db
 from errors import AppError
@@ -48,6 +49,15 @@ def keep_one_contact(email, phone):
         raise AppError(400, "NEED_EMAIL_OR_PHONE", "Keep an email or a phone number: you need one to log in.")
 
 
+def save_unique(db, code, message):
+    """Write the change now. Two people taking the same name at the same moment → the database's UNIQUE rule
+    refuses the second one: a 409 with a code instead of a crash (open_db undoes the change)."""
+    try:
+        db.flush()
+    except IntegrityError:
+        raise AppError(409, code, message)
+
+
 def require_current_password(user, password):
     # 400 (not 401): a 401 would make the app think the session ended and go to the login page
     if not password_matches(password, user.password_hash):
@@ -78,6 +88,7 @@ def change_username(form: UsernameForm, user_id: uuid.UUID = Depends(require_use
         if owner is not None and owner.id != user.id:
             raise AppError(409, "USERNAME_TAKEN", "This username is already taken. Please pick another one.")
         user.username = form.username
+        save_unique(db, "USERNAME_TAKEN", "This username is already taken. Please pick another one.")
         return profile_reply(user, profile)
 
 
@@ -93,6 +104,7 @@ def change_email(form: ChangeEmailForm, user_id: uuid.UUID = Depends(require_use
         if owner is not None and owner.id != user.id:
             raise AppError(409, "EMAIL_IN_USE", "This email is already used by another account.")
         user.email = email
+        save_unique(db, "EMAIL_IN_USE", "This email is already used by another account.")
         return profile_reply(user, profile)
 
 
@@ -106,6 +118,7 @@ def change_phone(form: PhoneForm, user_id: uuid.UUID = Depends(require_user)):
         if owner is not None and owner.id != user.id:
             raise AppError(409, "PHONE_TAKEN", "An account with this phone number already exists.")
         profile.phone = form.phone  # "+230XXXXXXXX" or None (removed)
+        save_unique(db, "PHONE_TAKEN", "An account with this phone number already exists.")
         return profile_reply(user, profile)
 
 

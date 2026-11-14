@@ -4,6 +4,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
+from config import docs_settings, is_production, log_app_mode
 from database import create_tables
 from errors import add_error_handlers
 from routes.auth import router as auth_router
@@ -25,7 +26,8 @@ from routes.summary import router as summary_router
 from services.ai_insights import log_ai_status
 from services.inflation import load_cpi
 
-app = FastAPI(title="Finance PWA")
+app = FastAPI(title="Finance PWA", **docs_settings())  # production: no /docs, /redoc, /openapi.json
+log_app_mode()  # "App mode: production / development" in the server log
 add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
 log_ai_status()  # "AI insights: ON / OFF" in the server log (the key itself is never logged)
@@ -59,10 +61,19 @@ async def always_check_for_new_files(request: Request, call_next):
     # Security headers: no MIME guessing, no framing (clickjacking), no full URLs sent to other sites
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if is_production():  # browsers then use https only for a year (Render already redirects http -> https)
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
     if not path.startswith(("/api/", "/docs", "/redoc")):  # /docs needs Swagger's inline script
         response.headers["Content-Security-Policy"] = CONTENT_SECURITY_POLICY
     return response
+
+
+# ===== HEALTH CHECK =====
+@app.get("/health")
+def health():
+    """For Render's health check. No login, no database (a ping every few seconds would keep Neon from sleeping)."""
+    return {"status": "ok"}
 
 
 # Only our own scripts + Chart.js (jsDelivr) and Google Fonts. Inline style="" attributes are still allowed.

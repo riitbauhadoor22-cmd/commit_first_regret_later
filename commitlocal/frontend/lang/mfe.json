@@ -347,6 +347,8 @@
   "error.CODE_EXPIRED": "Ou kod finn expire. Dimann enn nouvo.",
   "error.WRONG_CODE": "Kod fos. Verifie ou imel ek seye ankor.",
   "error.TOO_MANY_CODE_TRIES": "Ou finn met tro boukou kod fos. Seye ankor dan enn erdtan.",
+  "error.TOO_MANY_REQUESTS": "Tro boukou esey. Atann enn tigit ek seye ankor.",
+  "error.SERVER_ERROR": "Enn problem finn arive lor nou kote. Seye ankor.",
   "error.EXPENSE_NOT_FOUND": "Pa trouv sa depans-la.",
   "error.INCOME_NOT_FOUND": "Pa trouv sa revini-la.",
   "error.GOAL_NOT_FOUND": "Pa trouv sa lobzektif-la.",
