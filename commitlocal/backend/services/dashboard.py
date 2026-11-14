@@ -462,7 +462,10 @@ def build_jar(goals, monthly_target, today):
                      "target": goal["target_amount"],
                      "remaining": to_money(max(goal["target_amount"] - goal["saved_amount"], 0)),
                      "percent": goal["percent"], "status": goal["status"]})
-    return {"available": bool(rows), "goals": rows}
+    # All goals together (the Dashboard tile "Savings · 40%"); None when there are no goals (never a made-up 0%)
+    total_target = sum(row["target"] for row in rows)
+    overall = round(sum(min(row["saved"], row["target"]) for row in rows) / total_target * 100, 1) if total_target else None
+    return {"available": bool(rows), "goals": rows, "overall_percent": overall}
 
 
 # ===== EVERYTHING =====

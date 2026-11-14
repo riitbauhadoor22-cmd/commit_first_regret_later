@@ -1,6 +1,6 @@
-// money-tab.js — the Money tab: month picker, dark summary card, Money in / Money out switch,
+// money-tab.js — the Money tab: month picker, dark summary card, Money in / Money out / Savings switch,
 // Money out (quick-add chips, category budgets, fixed bills, recent expenses), Money in (regular and
-// one-off income), and the Add expense, Add income and Set budget pop-ups. All the maths comes from the backend (/api/summary).
+// one-off income), and the Add expense, Add income and Set budget pop-ups. The Savings view is drawn by savings-view.js. All the maths comes from the backend (/api/summary).
 // Tapping a category row opens its own pop-up: spent vs budget, set the budget, add / edit / delete its expenses.
 // The spent-vs-budget numbers and colours come from budget-calc.js (BudgetCalc.budgetProgress).
 // Texts come from i18n.js: t("key"). Category / income type VALUES stay English (the API needs them); only the display is translated.
@@ -20,6 +20,7 @@ let detailCategory = null;    // which category the category pop-up shows
 let detailEditingId = null;   // expense being edited in the category pop-up (null = adding)
 let detailEditingKind = null; // keep its Need/Want when editing
 let expensesGiven = true;     // false = no spending recorded this month (and not "Nothing spent"): show "—", not Rs 0
+let moneyView = "out";        // which part of the switch is shown: "in", "out" or "savings"
 
 // ===== LOAD AND DRAW THE WHOLE TAB =====
 async function loadMoneyTab() {
@@ -778,6 +779,7 @@ function setValueText(element, keys, value) {
 
 // Called by app.js after a language switch: redraw the tab, and the category pop-up if it's open
 async function redrawMoneyTab() {
+  if (moneyView === "savings") loadSavingsView(); // savings-view.js
   await loadMoneyTab();
   if (byId("sheet-category").hidden) return;
   byId("cat-sheet-month").textContent = formatMonthName(shownMonth);
@@ -785,15 +787,24 @@ async function redrawMoneyTab() {
   await loadCategoryExpenses();
 }
 
-// ===== MONEY IN / MONEY OUT SWITCH =====
+// ===== MONEY IN / MONEY OUT / SAVINGS SWITCH =====
+// Shows one view. Opening Savings loads /api/savings + /api/goals (savings-view.js) and returns that promise.
 function showMoneyView(view) {
-  const isOut = view === "out";
-  byId("view-out").hidden = !isOut;
-  byId("view-in").hidden = isOut;
-  byId("switch-out").classList.toggle("active", isOut);
-  byId("switch-in").classList.toggle("active", !isOut);
-  byId("switch-out").setAttribute("aria-selected", isOut);
-  byId("switch-in").setAttribute("aria-selected", !isOut);
+  moneyView = view;
+  ["in", "out", "savings"].forEach((name) => {
+    const isShown = name === view;
+    byId("view-" + name).hidden = !isShown;
+    byId("switch-" + name).classList.toggle("active", isShown);
+    byId("switch-" + name).setAttribute("aria-selected", isShown);
+  });
+  return view === "savings" ? loadSavingsView() : Promise.resolve();
+}
+
+// Money tab → Savings, from anywhere (Dashboard jar, "+ New goal" shortcuts). goalId = scroll to that goal's card.
+async function openSavingsView(goalId, openAddMoney) {
+  openPage("money"); // app.js (also loads the summary card)
+  await showMoneyView("savings");
+  if (goalId) showGoalCard(goalId, openAddMoney); // savings-view.js
 }
 
 // ===== START (called by app.js once you're logged in) =====
@@ -802,6 +813,7 @@ function startMoneyTab() {
   byId("month-next").addEventListener("click", () => changeMonth(1));
   byId("switch-out").addEventListener("click", () => showMoneyView("out"));
   byId("switch-in").addEventListener("click", () => showMoneyView("in"));
+  byId("switch-savings").addEventListener("click", () => showMoneyView("savings"));
 
   byId("add-expense-btn").addEventListener("click", () => openExpenseSheet(null));
   byId("mic-btn").addEventListener("click", () => openExpenseSheet(null)); // voice is added in step 6

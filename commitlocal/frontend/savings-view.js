@@ -1,8 +1,9 @@
-// targets-tab.js — the Targets tab: money saved in the bank (with a bar split into safety net + goals),
-// the monthly saving target, the safety net, and the goals list with On track / Needs more.
+// savings-view.js — Money → Savings (this used to be the Targets tab): money saved in the bank (with a bar split into
+// safety net + goals), the monthly saving target, the safety net, and the goals list with On track / Needs more.
 // It also runs the pop-ups: update bank balance, change target, new/edit goal, add money.
 // All the maths (needs per month, status, warning, inflation estimate) comes from the backend
 // (/api/savings, /api/goals and the Statistics Mauritius CPI projection).
+// STATUS_KEYS / STATUS_CLASSES / PRIORITY_KEYS live here and are also used by insights.js and dashboard.js.
 // Texts come from i18n.js: t("key"). The backend's status / labels are English values, translated here for display.
 
 // ===== STATE =====
@@ -54,7 +55,7 @@ const INFLATION_WARNING_KEYS = {
 };
 
 // ===== LOAD AND DRAW =====
-async function loadTargetsTab() {
+async function loadSavingsView() {
   try {
     const [savings, goals] = await Promise.all([getSavings(), getGoals()]);
     savingsInfo = savings;
@@ -66,6 +67,11 @@ async function loadTargetsTab() {
   } catch (error) {
     showToast(error.message, true);
   }
+}
+
+// After adding / changing savings: redraw this view AND the Money summary card ("Saved" changes too)
+async function reloadAfterSaving() {
+  await Promise.all([loadSavingsView(), loadMoneyTab()]);
 }
 
 // "2027-03-01" -> "1 Mar 2027" / "1 mars 2027"
@@ -191,7 +197,7 @@ function drawSavingsPrompt(goalCount) {
   if (goalCount > 0 || state === "provided") return false;
   const texts = { ask: "targets.prompt.savings", add: "targets.newGoalButton", none: "targets.none.savings",
     marked: "targets.marked.savings" };
-  const prompt = makeInfoPrompt("savings", state, texts, "", () => openGoalSheet(null), loadTargetsTab);
+  const prompt = makeInfoPrompt("savings", state, texts, "", () => openGoalSheet(null), loadSavingsView);
   if (!prompt) return false;
   const card = makeElement("section", "card");
   card.append(prompt);
@@ -207,6 +213,7 @@ const PRIORITY_KEYS = { 1: "goal.priorityHigh", 2: "goal.priorityMedium", 3: "go
 
 function makeGoalCard(goal) {
   const card = makeElement("section", "card goal-card");
+  card.dataset.goalId = goal.id; // so the Dashboard jar can bring the user to this goal (showGoalCard)
 
   // Name + status tag
   const top = makeElement("div", "goal-top");
@@ -316,7 +323,7 @@ async function saveSavings(balance, target, sheetId, errorId, doneMessage) {
     await updateSavings(balance, target);
     showToast(doneMessage);
     closeSheet(sheetId);
-    await loadTargetsTab();
+    await reloadAfterSaving();
   } catch (error) {
     showFormError(errorId, error.message);
   }
@@ -462,7 +469,7 @@ async function saveGoalForm(event) {
       showToast(t("toast.goalUpdated"));
     }
     closeSheet("sheet-goal");
-    await loadTargetsTab();
+    await reloadAfterSaving();
   } catch (error) {
     showFormError("goal-error", error.message);
   } finally {
@@ -476,7 +483,7 @@ async function deleteShownGoal() {
     await deleteGoal(editingGoalId);
     showToast(t("toast.goalDeleted"));
     closeSheet("sheet-goal");
-    await loadTargetsTab();
+    await reloadAfterSaving();
   } catch (error) {
     showFormError("goal-error", error.message);
   }
@@ -517,7 +524,7 @@ async function saveMoneyForm(event) {
       showToast(message);
     }
     closeSheet("sheet-money");
-    await loadTargetsTab();
+    await reloadAfterSaving();
   } catch (error) {
     showFormError("money-error", error.message);
   } finally {
@@ -525,8 +532,20 @@ async function saveMoneyForm(event) {
   }
 }
 
+// ===== OPEN FROM ANOTHER TAB (Dashboard jar, shortcuts) =====
+// Scrolls to a goal's card and highlights it for a moment; openAddMoney = also open its "Add money" pop-up
+function showGoalCard(goalId, openAddMoney) {
+  const card = document.querySelector('[data-goal-id="' + goalId + '"]');
+  if (!card) return;
+  card.scrollIntoView({ block: "center", behavior: prefersLessMotion() ? "auto" : "smooth" });
+  card.classList.add("goal-highlight");
+  setTimeout(() => card.classList.remove("goal-highlight"), 1600);
+  const goal = goalsInfo && goalsInfo.goals.find((item) => item.id === goalId);
+  if (openAddMoney && goal && goal.status !== "Done") openMoneySheet(goal);
+}
+
 // ===== START (called by app.js once you're logged in) =====
-function startTargetsTab() {
+function startSavingsView() {
   byId("bank-edit-btn").addEventListener("click", openBankSheet);
   byId("target-edit-btn").addEventListener("click", openTargetSheet);
   byId("safety-add-btn").addEventListener("click", () => openMoneySheet(null));

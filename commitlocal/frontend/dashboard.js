@@ -1,20 +1,24 @@
-// dashboard.js — the Dashboard tab (the first tab after logging in). It only DRAWS: every number, graph, score,
-// badge and the jar level come from GET /api/dashboard (backend/services/dashboard.py, plain maths, never the AI).
+// dashboard.js — the Dashboard tab (the first page after logging in). It only DRAWS: every number, graph, score
+// and jar level come from GET /api/dashboard (backend/services/dashboard.py, plain maths, never the AI).
+// The page is a 2-column grid of blocks: each starts as a small tile (icon + title + one number); tapping it opens
+// the full block across both columns (only one open at a time, remembered in localStorage "dashOpenBlock").
 // Opening the tab = one GET. Graphs use Chart.js (drawLoanChart / loanChartOptions from loans-tab.js); offline they
-// are hidden. The savings jar is an SVG made of coin elements placed by jar-calc.js (window.JarCalc).
+// are hidden. The savings jars are SVGs (liquid + wave + coins) measured by jar-calc.js (window.JarCalc).
+// The weekly budget + badges are drawn on the Profile tab (profile-tab.js) from the same GET.
 // Texts come from i18n.js: t("key"). Category values stay English (the API needs them); only the display is translated.
 
 // ===== STATE =====
 let dashData = null;          // last reply from /api/dashboard
 let spendingView = "total";   // "total" or "category" (spending graph switch)
 let shownLoanId = "all";      // loan graph: "all" or one loan's id
-let shownJarGoalId = null;    // savings jar: which goal
+let openBlockName = null;     // which Dashboard block is open (null = all are small tiles)
 let currentUserName = "";     // set by app.js after /api/auth/me
 
 const CATEGORY_COLOURS = ["#3d8bff", "#38d6ff", "#3ddc84", "#ff9a4a", "#f5c451", "#e58fd6", "#c5a3ff", "#5fd4e0",
   "#ff6b7d"];
-const BADGE_ICONS = { FIRST_WEEK: "🥇", BUDGET_KEEPER: "🛡️", CONSISTENT_PLANNER: "📅", SAVINGS_STREAK: "🔥" };
-const JAR_SEEN_KEY = "jarSeen."; // + goal id → saved amount last shown (so coins only drop when savings grow)
+const JAR_SEEN_KEY = "jarSeen."; // + goal id → saved amount last shown (so the jar only fills up when savings grow)
+const OPEN_BLOCK_KEY = "dashOpenBlock"; // the last open block (per phone)
+const BLOCK_OPEN_MS = 260;      // a little longer than the 250 ms opening animation in style.css
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // ===== LOAD (one GET, no AI) =====
@@ -31,6 +35,7 @@ async function loadDashboard() {
 function drawDashboard() {
   const data = dashData;
   drawWelcome(data);
+  drawTiles(data);
   drawBalance(data.balance);
   drawHealth(data.health);
   drawSpendingChart(data.spending);
@@ -38,8 +43,6 @@ function drawDashboard() {
   drawLoanSection(data.loans);
   drawRecap(data.recap);
   drawJarSection(data.jar);
-  drawWeekly(data.weekly, data.recent_weeks);
-  drawBadges(data.badges);
 }
 
 // Small helpers
@@ -60,6 +63,74 @@ function makeOption(text, value) {
 
 function setHidden(id, hidden) {
   byId(id).hidden = hidden;
+}
+
+// ===== THE GRID: SMALL TILES THAT OPEN INTO FULL BLOCKS =====
+// One key number per tile. Missing data shows "—" (or "Not shared 🔒"), never Rs 0.
+function drawTiles(data) {
+  const balance = data.balance;
+  byId("tile-balance").textContent = !balance.available ? "—"
+    : balance.balance < 0 ? formatOut(Math.round(balance.balance)) : formatMoney(Math.round(balance.balance));
+  byId("tile-score").textContent = data.health.available ? data.health.score : "—";
+  byId("tile-spend").textContent = data.recap.expenses === null ? "—" : formatMoney(Math.round(data.recap.expenses));
+  const saving = data.savings;
+  byId("tile-save").textContent = saving.available ? Math.round(saving.months[saving.months.length - 1].rate) + "%" : "—";
+  byId("tile-jar").textContent = data.jar.overall_percent === null ? "—" : Math.round(data.jar.overall_percent) + "%";
+  const loans = data.loans;
+  byId("tile-loans").textContent = loans.available ? formatMoney(Math.round(loans.outstanding))
+    : loans.state === "none" ? t("dash.tile.noLoans") : t("dash.tile.notShared");
+  byId("tile-recap").textContent = I18n.formatDate(new Date(data.recap.month + "-01T12:00:00"), { month: "long" });
+}
+
+function readOpenBlock() {
+  try {
+    return localStorage.getItem(OPEN_BLOCK_KEY);
+  } catch (error) {
+    return null; // storage blocked: everything starts closed
+  }
+}
+
+function saveOpenBlock(name) {
+  try {
+    if (name) localStorage.setItem(OPEN_BLOCK_KEY, name);
+    else localStorage.removeItem(OPEN_BLOCK_KEY);
+  } catch (error) {
+    // storage blocked: fine
+  }
+}
+
+// Tap a tile: open it (and close the others), or close it if it was already open
+function toggleBlock(name) {
+  openBlock(openBlockName === name ? null : name, true);
+}
+
+function openBlock(name, byTap) {
+  if (name && !byId("block-" + name)) name = null; // an old saved name that no longer exists
+  openBlockName = name;
+  document.querySelectorAll(".dash-block").forEach((block) => {
+    const isOpen = block.dataset.block === name;
+    block.classList.toggle("open", isOpen);
+    block.querySelector(".dash-tile").setAttribute("aria-expanded", isOpen);
+  });
+  saveOpenBlock(name);
+  if (name) setTimeout(() => afterBlockOpened(name, byTap), prefersLessMotion() ? 0 : BLOCK_OPEN_MS);
+}
+
+// Graphs drawn while the block was small get the full width now; the jar plays its "money added" animation now
+function afterBlockOpened(name, byTap) {
+  const block = byId("block-" + name);
+  block.querySelectorAll("canvas").forEach((canvas) => {
+    if (loanCharts[canvas.id]) loanCharts[canvas.id].resize(); // loanCharts: loans-tab.js
+  });
+  if (name === "jar" && dashData && dashData.jar.available) drawJarList(dashData.jar, true);
+  if (byTap) block.scrollIntoView({ block: "nearest", behavior: prefersLessMotion() ? "auto" : "smooth" });
+}
+
+function setUpBlocks() {
+  document.querySelectorAll(".dash-block").forEach((block) => {
+    block.querySelector(".dash-tile").addEventListener("click", () => toggleBlock(block.dataset.block));
+  });
+  openBlock(readOpenBlock(), false);
 }
 
 // ===== WELCOME + SHORTCUTS =====
@@ -278,35 +349,42 @@ function drawRecap(recap) {
   if (recap.statements.length === 0) list.append(makeElement("li", "muted", t("dash.recap.empty")));
 }
 
-// ===== 7. SAVINGS JAR (coins = real goal progress) =====
+// ===== 7. SAVINGS JARS (one per goal, liquid level = real goal progress) =====
 function drawJarSection(jar) {
   setHidden("dash-jar-empty", jar.available);
   setHidden("dash-jar-body", !jar.available);
   if (!jar.available) return;
-  if (!jar.goals.some((goal) => goal.id === shownJarGoalId)) shownJarGoalId = jar.goals[0].id;
-  const chips = byId("dash-jar-goals");
-  chips.replaceChildren();
-  jar.goals.forEach((goal) => {
-    const chip = makeButton(goal.name, "chip" + (goal.id === shownJarGoalId ? " active" : ""), () => {
-      shownJarGoalId = goal.id;
-      drawJarSection(dashData.jar);
-    });
-    chip.setAttribute("aria-pressed", goal.id === shownJarGoalId);
-    chips.append(chip);
-  });
-  const goal = jar.goals.find((item) => item.id === shownJarGoalId);
-  drawJar(goal, readJarSeen(goal.id));
-  writeJarSeen(goal.id, goal.saved);
-  byId("dash-jar-name").textContent = goal.name;
-  byId("dash-jar-saved").textContent = formatMoney(goal.saved);
-  byId("dash-jar-target").textContent = formatMoney(goal.target);
-  byId("dash-jar-remaining").textContent = formatMoney(goal.remaining);
-  byId("dash-jar-percent").textContent = Math.round(goal.percent) + "%";
-  byId("dash-jar-message").textContent = goal.percent >= 100 ? "🎉 " + t("dash.jar.done")
-    : goal.saved > 0 ? t("dash.jar.some") : t("dash.jar.nothing");
+  // While the block is closed nobody sees the jar, so the "money added" animation waits until it opens
+  drawJarList(jar, openBlockName === "jar");
 }
 
-// Remember which amount the jar showed last, so coins only drop in when savings really grow (not on every visit)
+// visible = the jar block is open: play the rise + coin for goals that grew, and remember what was shown
+function drawJarList(jar, visible) {
+  const list = byId("dash-jar-list");
+  list.replaceChildren();
+  jar.goals.forEach((goal, index) => {
+    const previous = readJarSeen(goal.id);
+    const animate = visible && !prefersLessMotion() && JarCalc.shouldAnimate(previous, goal.saved);
+    list.append(makeJarCard(goal, animate ? previous : null, index));
+    if (visible) writeJarSeen(goal.id, goal.saved);
+  });
+}
+
+function makeJarCard(goal, previousSaved, index) {
+  const percent = Math.round(goal.percent);
+  const card = makeButton("", "jar-card", () => openSavingsView(goal.id)); // money-tab.js: Money → Savings
+  card.setAttribute("aria-label", t("dash.jar.aria", { name: goal.name, percent: percent }) + ". " + t("dash.jar.open"));
+  card.append(makeElement("span", "jar-name", goal.name));
+  const box = makeElement("span", "jar-box");
+  box.append(drawJar(goal, previousSaved, index));
+  card.append(box);
+  card.append(makeElement("span", "jar-amounts", t("dash.jar.amounts", { a: formatMoney(goal.saved),
+    b: formatMoney(goal.target), n: percent })));
+  if (goal.percent >= 100) card.append(makeElement("span", "jar-done-text", t("dash.jar.reached")));
+  return card;
+}
+
+// Remember which amount the jar showed last, so it only fills up when savings really grow (not on every visit)
 function readJarSeen(goalId) {
   try {
     const value = localStorage.getItem(JAR_SEEN_KEY + goalId);
@@ -335,120 +413,78 @@ const JAR_OUTLINE = "M65 30 L65 42 C65 52 28 56 28 78 L28 206 Q28 226 48 226 L15
 const JAR_INSIDE = "M69 34 L69 44 C69 56 32 60 32 80 L32 204 Q32 222 50 222 L150 222 Q168 222 168 204 L168 80 " +
   "C168 60 131 56 131 44 L131 34 Z";
 
-// previousSaved = amount shown last time (null = first time: no drop animation)
-function drawJar(goal, previousSaved) {
-  const box = byId("dash-jar");
-  box.replaceChildren();
+function makeGradient(id, stops) {
+  const gradient = svgElement("linearGradient", { id: id, x1: "0", y1: "0", x2: "0", y2: "1" });
+  stops.forEach(([offset, colour]) => gradient.append(svgElement("stop", { offset: offset, "stop-color": colour })));
+  return gradient;
+}
+
+// The liquid level, moved with a CSS transform (SVG units). previousSaved !== null → rise from the old level.
+function makeLiquid(goal, previousSaved, n) {
+  const level = svgElement("g", { class: "jar-liquid" });
+  const endY = JarCalc.levelY(goal.percent);
+  level.style.transform = "translateY(" + endY + "px)";
+  if (previousSaved !== null) { // CSS animation jar-rise (style.css) slides from the old level to the new one
+    level.style.setProperty("--from-y", JarCalc.levelY((previousSaved / goal.target) * 100) + "px");
+    level.style.setProperty("--to-y", endY + "px");
+    level.classList.add("jar-rising");
+  }
+  level.append(svgElement("path", { d: JarCalc.wavePath(), class: "jar-wave jar-wave-back", fill: "url(#jar-liquid-" + n + ")" }),
+    svgElement("path", { d: JarCalc.wavePath(), class: "jar-wave jar-wave-front", fill: "url(#jar-liquid-" + n + ")" }));
+  return level;
+}
+
+function makeCoin(coin, n) {
+  const place = svgElement("g", { transform: "translate(" + coin.x + " " + coin.y + ") rotate(" + coin.rotate + ")" });
+  const body = svgElement("g", { class: "coin" });
+  body.append(svgElement("ellipse", { rx: 12, ry: 5, fill: "url(#coin-gold-" + n + ")", stroke: "#a8740f", "stroke-width": 1 }),
+    svgElement("ellipse", { rx: 7.5, ry: 2.6, fill: "none", stroke: "#fff6cc", "stroke-width": 0.8, opacity: 0.7 }));
+  place.append(body);
+  return { place: place, body: body };
+}
+
+// n = the jar's number on the page (each SVG needs its own gradient / clip ids)
+function drawJar(goal, previousSaved, n) {
   const root = svgElement("svg", { viewBox: "0 0 200 240", class: "jar-svg" + (goal.percent >= 100 ? " jar-done" : ""),
-    role: "img", "aria-label": t("dash.jar.aria", { name: goal.name, percent: Math.round(goal.percent) }) });
+    "aria-hidden": "true", focusable: "false" });
   const defs = svgElement("defs", {});
-  const gold = svgElement("radialGradient", { id: "coin-gold", cx: "40%", cy: "35%", r: "70%" });
+  const gold = svgElement("radialGradient", { id: "coin-gold-" + n, cx: "40%", cy: "35%", r: "70%" });
   gold.append(svgElement("stop", { offset: "0%", "stop-color": "#fff1a8" }),
     svgElement("stop", { offset: "55%", "stop-color": "#f2c14e" }), svgElement("stop", { offset: "100%", "stop-color": "#b9811c" }));
-  const clip = svgElement("clipPath", { id: "jar-inside" });
+  const clip = svgElement("clipPath", { id: "jar-inside-" + n });
   clip.append(svgElement("path", { d: JAR_INSIDE }));
-  defs.append(gold, clip);
+  defs.append(gold, clip, makeGradient("jar-liquid-" + n, [["0%", "#5fe3ff"], ["100%", "#2a6dff"]]));
   root.append(defs, svgElement("path", { d: JAR_OUTLINE, class: "jar-glass" }));
 
-  // Coins: only the ones above the old amount drop in, the rest are already in place
-  let fromCount;
-  if (previousSaved !== null && goal.saved > previousSaved && goal.target > 0) {
-    fromCount = JarCalc.coinCount((previousSaved / goal.target) * 100);
-  }
-  const coins = svgElement("g", { "clip-path": "url(#jar-inside)" });
-  let dropNumber = 0;
-  JarCalc.layoutCoins(goal.percent, fromCount).forEach((coin) => {
-    const place = svgElement("g", { transform: "translate(" + coin.x + " " + coin.y + ") rotate(" + coin.rotate + ")" });
-    const body = svgElement("g", { class: coin.isNew ? "coin coin-drop" : "coin" });
-    if (coin.isNew) {
-      body.style.setProperty("--drop", -(coin.y - 8) + "px");
-      body.style.animationDelay = Math.min(dropNumber, 20) * 70 + "ms";
-      dropNumber += 1;
+  const inside = svgElement("g", { "clip-path": "url(#jar-inside-" + n + ")" });
+  if (goal.percent > 0) inside.append(makeLiquid(goal, previousSaved, n));
+  const coins = JarCalc.layoutCoins(goal.percent);
+  coins.forEach((spot, i) => {
+    const coin = makeCoin(spot, n);
+    if (previousSaved !== null && i === coins.length - 1) { // one coin drops in when money was added
+      coin.body.classList.add("coin-drop");
+      coin.body.style.setProperty("--drop", -(spot.y - 40) + "px");
     }
-    body.append(svgElement("ellipse", { rx: 13, ry: 5.5, fill: "url(#coin-gold)", stroke: "#a8740f", "stroke-width": 1 }),
-      svgElement("ellipse", { rx: 8, ry: 2.8, fill: "none", stroke: "#fff6cc", "stroke-width": 0.8, opacity: 0.7 }));
-    place.append(body);
-    coins.append(place);
+    inside.append(coin.place);
   });
-  root.append(coins);
-  // Glass shine + rim drawn on top, so the coins look inside the jar
+  root.append(inside);
+  // Glass shine + rim on top, so the liquid looks inside the jar
   root.append(svgElement("path", { d: "M46 100 C43 125 43 150 46 170", class: "jar-shine" }),
     svgElement("rect", { x: 58, y: 20, width: 84, height: 13, rx: 5, class: "jar-rim" }));
-  if (goal.percent >= 100) { // small celebration
+  if (goal.percent >= 100) { // short celebration
     const sparkles = svgElement("g", { class: "jar-sparkles" });
-    [[40, 24], [162, 30], [100, 8], [178, 70], [22, 66]].forEach(([x, y], i) => {
+    [[40, 24], [162, 30], [100, 8], [178, 70], [22, 66], [60, 6], [140, 10]].forEach(([x, y], i) => {
       const star = svgElement("circle", { cx: x, cy: y, r: 3.5 });
-      star.style.animationDelay = i * 180 + "ms";
+      star.style.animationDelay = i * 140 + "ms";
       sparkles.append(star);
     });
     root.append(sparkles);
   }
-  box.append(root);
-}
-
-// ===== 8. WEEKLY BUDGET + BADGES =====
-function drawWeekly(weekly, recentWeeks) {
-  byId("dash-week-input").value = weekly.budget === null ? "" : weekly.budget;
-  setHidden("dash-week-remove", !weekly.available);
-  setHidden("dash-week-body", !weekly.available);
-  byId("dash-week-note").textContent = weekly.available ? "" : t("dash.week.setOne");
-  if (!weekly.available) return;
-  const bar = byId("dash-week-bar");
-  bar.style.width = Math.min(weekly.percent, 100) + "%";
-  bar.parentElement.classList.toggle("over", weekly.state === "over");
-  byId("dash-week-text").textContent = t(weekly.state === "over" ? "dash.week.over" : "dash.week.left", {
-    spent: formatMoney(weekly.spent), budget: formatMoney(weekly.budget), left: formatMoney(Math.abs(weekly.left)) });
-  byId("dash-week-days").textContent = t("dash.week.days", { left: weekly.days_left, recorded: weekly.days_recorded,
-    min: weekly.min_tracked_days });
-  const list = byId("dash-week-history");
-  list.replaceChildren();
-  recentWeeks.slice().reverse().forEach((week) => {
-    const result = week.kept ? "dash.week.kept" : week.tracked ? "dash.week.missed" : "dash.week.notTracked";
-    list.append(makeElement("li", "", formatShortDate(week.week_start) + " – " + formatShortDate(week.week_end) + ": " +
-      t(result, { spent: formatMoney(week.spent) })));
-  });
-}
-
-function drawBadges(badges) {
-  const earned = {};
-  badges.earned.forEach((badge) => { earned[badge.code] = badge.earned_on; });
-  const list = byId("dash-badges");
-  list.replaceChildren();
-  badges.all.forEach((code) => {
-    const li = makeElement("li", "badge" + (earned[code] ? " earned" : ""));
-    li.append(makeElement("span", "badge-icon", earned[code] ? BADGE_ICONS[code] : "🔒"),
-      makeElement("span", "item-name", t("dash.badge." + code + ".name")),
-      makeElement("span", "item-sub", t("dash.badge." + code + ".desc")),
-      makeElement("span", "item-sub", earned[code] ? t("dash.badge.earnedOn", { date: formatShortDate(earned[code]) })
-        : t("dash.badge.notYet")));
-    list.append(li);
-  });
+  return root;
 }
 
 function announceNewBadges(codes) {
   if (codes.length) showToast(t("dash.badge.new", { name: codes.map((code) => t("dash.badge." + code + ".name")).join(", ") }));
-}
-
-async function saveWeeklyBudget(event) {
-  event.preventDefault();
-  const text = byId("dash-week-input").value;
-  const amount = Number(text);
-  if (text === "" || !(amount > 0) || amount > 10000000) { // same rule as the backend (more than 0, at most 1 crore)
-    byId("dash-week-error").textContent = t("dash.week.bad");
-    return;
-  }
-  await sendWeeklyBudget(amount);
-}
-
-async function sendWeeklyBudget(amount) {
-  byId("dash-week-error").textContent = "";
-  try {
-    dashData = await setWeeklyBudget(amount, getTodayText());
-    drawDashboard();
-    showToast(t(amount === null ? "dash.week.removed" : "dash.week.saved"));
-  } catch (error) {
-    byId("dash-week-error").textContent = error.message;
-  }
 }
 
 // ===== LANGUAGE SWITCH (called by app.js) =====
@@ -468,16 +504,15 @@ function startDashboard() {
     shownLoanId = event.target.value;
     drawLoanChoice(dashData.loans);
   });
-  byId("dash-week-form").addEventListener("submit", saveWeeklyBudget);
-  byId("dash-week-remove").addEventListener("click", () => sendWeeklyBudget(null));
   byId("dash-details-btn").addEventListener("click", () => goTo("money"));
   byId("dash-add-income").addEventListener("click", () => goTo("money", () => openIncomeSheet(null, "monthly")));
   byId("dash-add-expense").addEventListener("click", () => goTo("money", () => openExpenseSheet(null)));
-  byId("dash-add-goal").addEventListener("click", () => goTo("targets", () => openGoalSheet(null)));
+  byId("dash-add-goal").addEventListener("click", () => openSavingsView().then(() => openGoalSheet(null)));
   byId("dash-add-loan").addEventListener("click", () => goTo("loans", () => byId("repay-balance").focus()));
-  byId("dash-jar-new").addEventListener("click", () => goTo("targets", () => openGoalSheet(null)));
+  byId("dash-jar-new").addEventListener("click", () => openSavingsView().then(() => openGoalSheet(null)));
   byId("dash-loan-add").addEventListener("click", () => goTo("loans", () => byId("repay-balance").focus()));
-  byId("dash-save-add").addEventListener("click", () => goTo("targets"));
+  byId("dash-save-add").addEventListener("click", () => openSavingsView());
   byId("dash-spend-add").addEventListener("click", () => goTo("money", () => openExpenseSheet(null)));
+  setUpBlocks();
   loadDashboard();
 }

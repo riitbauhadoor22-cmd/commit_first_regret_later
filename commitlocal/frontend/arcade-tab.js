@@ -1,4 +1,4 @@
-// arcade-tab.js — the Arcade tab's "Budget Challenge" game: pick a level, split a fictional income between the
+// arcade-tab.js — the "Budget Challenge" game (on the Profile tab, it used to be the Arcade tab): pick a level, split a fictional income between the
 // level's own categories, see ONE surprise event, adjust once, then get a score out of 100, tips and XP.
 // The server (/api/game) picks the event, works out the score and gives XP once per game. Texts: "game.*" keys.
 // Uses formatMoney / makeElement / makeLegendItem from app.js and money-tab.js, and GameCalc from game-calc.js.

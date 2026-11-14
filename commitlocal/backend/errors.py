@@ -33,6 +33,8 @@ FIELD_CODES = {
     "balance": "INVALID_AMOUNT", "monthly_payment": "INVALID_AMOUNT", "annual_rate": "INVALID_RATE",  # saved loans
     "topic": "INVALID_INPUT", "none": "INVALID_INPUT",  # "I have none" choices
     "today": "INVALID_DATE",  # dashboard: the phone's date
+    "username": "INVALID_USERNAME", "phone": "INVALID_PHONE", "occupation": "INVALID_OCCUPATION",  # registration + Profile
+    "current_password": "INVALID_PASSWORD", "new_password": "INVALID_PASSWORD",  # Profile: change password / email
 }
 
 
@@ -41,6 +43,9 @@ def code_for_validation(errors):
     if not errors:
         return "INVALID_INPUT"
     first = errors[0]
+    own_code = getattr(first.get("ctx", {}).get("error"), "code", None)  # CodedValueError in models.py
+    if own_code:
+        return own_code
     field = first.get("loc", [""])[-1]  # e.g. ("body", "amount") → "amount"
     if first.get("type") == "missing" and field not in FIELD_CODES:
         return "MISSING_FIELD"

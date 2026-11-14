@@ -51,6 +51,23 @@ function getMe() { return callApi("GET", "/api/auth/me"); }
 function logOut() { return callApi("POST", "/api/auth/logout"); }
 function saveMyLanguage(language) { return callApi("PUT", "/api/auth/language", { language: language }); } // en / fr / mfe
 
+// ===== PROFILE TAB (always the logged-in user's own account; the password hash is never sent) =====
+function getProfile() { return callApi("GET", "/api/profile"); }
+function saveProfileName(fullName) { return callApi("PUT", "/api/profile/name", { full_name: fullName }); }
+function saveProfileUsername(username) { return callApi("PUT", "/api/profile/username", { username: username }); }
+// email / phone null = remove it (the server keeps at least one of the two); both need the current password
+function saveProfileEmail(email, currentPassword) {
+  return callApi("PUT", "/api/profile/email", { email: email, current_password: currentPassword });
+}
+function saveProfilePhone(phone, currentPassword) {
+  return callApi("PUT", "/api/profile/phone", { phone: phone, current_password: currentPassword });
+}
+function saveProfileOccupation(occupation) { return callApi("PUT", "/api/profile/occupation", { occupation: occupation }); }
+function changeMyPassword(current, newPassword, confirm) {
+  return callApi("PUT", "/api/profile/password",
+    { current_password: current, new_password: newPassword, confirm_password: confirm });
+}
+
 // ===== MONEY TAB =====
 function getSummary(month) { return callApi("GET", "/api/summary?month=" + month); }
 
@@ -101,7 +118,7 @@ function setWeeklyBudget(amount, today) { return callApi("PUT", "/api/dashboard/
 function getInsights(month) { return callApi("GET", "/api/insights?month=" + month); }
 function generateInsights(month) { return callApi("POST", "/api/insights/generate", { month: month }); }
 
-// ===== TARGETS TAB =====
+// ===== MONEY → SAVINGS (was the Targets tab) =====
 function getSavings() { return callApi("GET", "/api/savings"); }
 function updateSavings(bankBalance, monthlyTarget) {
   return callApi("PUT", "/api/savings", { bank_balance: bankBalance, monthly_target: monthlyTarget });

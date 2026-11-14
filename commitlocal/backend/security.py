@@ -36,6 +36,14 @@ def check_password(password, password_hash):
     return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
 
 
+def password_matches(password, password_hash):
+    """Like check_password, but never crashes: bcrypt refuses passwords over 72 bytes, so those are simply wrong."""
+    try:
+        return check_password(password, password_hash)
+    except ValueError:
+        return False
+
+
 def make_otp():
     """A random 6-digit code, e.g. "042917"."""
     return f"{secrets.randbelow(1_000_000):06d}"

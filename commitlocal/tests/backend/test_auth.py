@@ -2,16 +2,19 @@
 import smtplib
 
 import pytest
+from sqlalchemy import select
 
+import database
 import email_sender
 import routes.auth
-from conftest import PASSWORD, log_in, register
+from conftest import PASSWORD, age_codes, log_in, register
+from models import Profile, User
 
 REGISTER = "/api/auth/register"
 
 
 def form(**changes):
-    return {"full_name": "Asha", "email": "asha@example.com", "password": PASSWORD,
+    return {"full_name": "Asha", "username": "asha_k", "email": "asha@example.com", "password": PASSWORD,
             "confirm_password": PASSWORD, **changes}
 
 
@@ -27,7 +30,7 @@ def test_register_duplicate_email(client):  # same email twice (any case) -> 409
     assert res.status_code == 409 and res.json()["code"] == "EMAIL_TAKEN"
 
 
-@pytest.mark.parametrize("missing", ["full_name", "email", "password", "confirm_password"])
+@pytest.mark.parametrize("missing", ["full_name", "username", "email", "password", "confirm_password"])
 def test_register_missing_field(client, missing):  # each missing field -> 422, never 500
     body = form()
     del body[missing]
@@ -75,7 +78,8 @@ def test_me_without_session(client):  # no cookie -> 401
 
 def test_me_with_session_and_after_logout(client, sent_codes):  # logged in -> name + email; logged out -> 401
     log_in(client, sent_codes)
-    assert client.get("/api/auth/me").json() == {"full_name": "Asha", "email": "asha@example.com", "language": None}
+    assert client.get("/api/auth/me").json() == {"full_name": "Asha", "username": "asha_example.com",
+                                                 "email": "asha@example.com", "language": None}
     client.post("/api/auth/logout")
     assert client.get("/api/auth/me").status_code == 401
 
@@ -127,3 +131,135 @@ def test_email_is_built_correctly_without_sending(monkeypatch):  # a fake SMTP s
 
 def test_routes_use_the_mocked_sender(sent_codes):  # the fixture really replaced the Gmail sender
     assert routes.auth.send_otp_email is not email_sender.send_otp_email
+
+
+# ===== USERNAME + PHONE AT REGISTRATION =====
+def saved_account(email="asha@example.com"):
+    """(username, phone) as stored in the database."""
+    with database.open_db() as db:
+        user = db.scalar(select(User).where(User.email == email))
+        profile = db.scalar(select(Profile).where(Profile.user_id == user.id))
+        return user.username, profile.phone
+
+
+def test_register_with_username_and_phone(client):  # both saved: username lowercase, phone as +230XXXXXXXX
+    res = client.post(REGISTER, json=form(username="  Asha_K  ", phone="5123 4567"))
+    assert res.status_code == 201
+    assert saved_account() == ("asha_k", "+23051234567")
+
+
+def test_register_without_phone(client):  # the phone number is optional (missing or empty)
+    assert client.post(REGISTER, json=form()).status_code == 201
+    assert client.post(REGISTER, json=form(email="b@example.com", username="bobby", phone="")).status_code == 201
+    assert saved_account()[1] is None and saved_account("b@example.com")[1] is None
+
+
+@pytest.mark.parametrize("phone, saved", [("+230 5123 4567", "+23051234567"), ("+230-212-3456", "+2302123456"),
+                                          ("2123456", "+2302123456"), ("51234567", "+23051234567")])
+def test_register_phone_is_normalised(client, phone, saved):  # spaces / dashes removed, +230 added
+    assert client.post(REGISTER, json=form(phone=phone)).status_code == 201
+    assert saved_account()[1] == saved
+
+
+@pytest.mark.parametrize("phone", ["12345", "61234567", "+44 7700 900123", "abcdefg", "+230 5123 45678", "5123456a"])
+def test_register_invalid_phone(client, phone):  # not a Mauritius number -> 422 INVALID_PHONE, nothing saved
+    res = client.post(REGISTER, json=form(phone=phone))
+    assert res.status_code == 422 and res.json()["code"] == "INVALID_PHONE"
+    assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 401
+
+
+@pytest.mark.parametrize("username", ["", "ab", "a" * 31, "asha k", "asha@k", "ásha", "   "])
+def test_register_invalid_username(client, username):  # 3–30 of letters, digits . _ - only, else 422 INVALID_USERNAME
+    res = client.post(REGISTER, json=form(username=username))
+    assert res.status_code == 422 and res.json()["code"] == "INVALID_USERNAME"
+
+
+def test_register_duplicate_username_any_case(client):  # same username (other case) -> 409 USERNAME_TAKEN
+    assert client.post(REGISTER, json=form(username="Asha_K")).status_code == 201
+    res = client.post(REGISTER, json=form(email="other@example.com", username="ASHA_k"))
+    assert res.status_code == 409 and res.json()["code"] == "USERNAME_TAKEN"
+
+
+# ===== EMAIL OR PHONE (at least one) =====
+def phone_only(**changes):
+    body = form(email=None, phone="5123 4567", **changes)
+    del body["email"]
+    return body
+
+
+def test_register_email_only_phone_only_or_both(client):
+    assert client.post(REGISTER, json=form()).status_code == 201
+    assert client.post(REGISTER, json=phone_only(username="phone_only")).status_code == 201
+    assert client.post(REGISTER, json=form(email="both@example.com", username="both", phone="52223333")).status_code == 201
+    with database.open_db() as db:
+        user = db.scalar(select(User).where(User.username == "phone_only"))
+        assert user.email is None
+        assert db.scalar(select(Profile.phone).where(Profile.user_id == user.id)) == "+23051234567"
+
+
+@pytest.mark.parametrize("email, phone", [(None, None), ("", ""), ("  ", None)])
+def test_register_needs_email_or_phone(client, email, phone):  # neither -> 422 EMAIL_OR_PHONE_REQUIRED
+    res = client.post(REGISTER, json=form(email=email, phone=phone))
+    assert res.status_code == 422 and res.json()["code"] == "EMAIL_OR_PHONE_REQUIRED"
+
+
+def test_register_duplicate_phone(client):  # same number written differently -> 409 PHONE_TAKEN
+    assert client.post(REGISTER, json=form(phone="51234567")).status_code == 201
+    res = client.post(REGISTER, json=form(email="b@example.com", username="bobby", phone="+230 5123-4567"))
+    assert res.status_code == 409 and res.json()["code"] == "PHONE_TAKEN"
+
+
+def test_login_with_phone_sends_the_code_by_email(client, sent_codes):  # an account with both: phone works as login
+    client.post(REGISTER, json=form(phone="51234567"))
+    res = client.post("/api/auth/login", json={"email": "5123 4567", "password": PASSWORD})
+    assert res.status_code == 200 and res.json()["code"] == "CODE_SENT" and len(sent_codes) == 1
+    res = client.post("/api/auth/verify-code", json={"email": "+23051234567", "code": sent_codes[-1]})
+    assert res.status_code == 200 and client.get("/api/auth/me").json()["username"] == "asha_k"
+
+
+def test_phone_only_login_sends_the_code_on_whatsapp(client, monkeypatch):  # no email -> WhatsApp (faked)
+    sent = []
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: sent.append((phone, code)))
+    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: pytest.fail("no email for this account"))
+    client.post(REGISTER, json=phone_only())
+    res = client.post("/api/auth/login", json={"email": "5123 4567", "password": PASSWORD})
+    assert res.status_code == 200 and res.json()["code"] == "CODE_SENT_WHATSAPP"
+    assert sent[-1][0] == "+23051234567" and len(sent[-1][1]) == 6
+    res = client.post("/api/auth/verify-code", json={"email": "+23051234567", "code": sent[-1][1]})
+    assert res.status_code == 200 and client.get("/api/auth/me").status_code == 200  # logged in
+
+
+def test_phone_only_resend_and_wrong_password(client, sent_codes):
+    client.post(REGISTER, json=phone_only())
+    res = client.post("/api/auth/login", json={"email": "51234567", "password": "Wrong!Pass1"})
+    assert res.status_code == 401 and sent_codes == []  # wrong password is still checked first
+    assert client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD}).status_code == 200
+    age_codes(31)  # pretend the 30-second resend wait is over
+    res = client.post("/api/auth/resend-code", json={"email": "51234567"})
+    assert res.status_code == 200 and res.json()["code"] == "CODE_RESENT_WHATSAPP" and len(sent_codes) == 2
+
+
+def test_phone_only_login_without_twilio_keys(client, monkeypatch):  # not set up -> friendly 503, no crash
+    def not_set_up(phone, code):
+        raise routes.auth.WhatsAppNotConfigured()
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", not_set_up)
+    client.post(REGISTER, json=phone_only())
+    res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
+    assert res.status_code == 503 and res.json()["code"] == "PHONE_CODE_NOT_AVAILABLE"
+
+
+def test_phone_only_login_when_whatsapp_fails(client, monkeypatch):  # e.g. the phone hasn't joined the sandbox
+    def fails(phone, code):
+        raise routes.auth.WhatsAppFailed()
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", fails)
+    client.post(REGISTER, json=phone_only())
+    res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
+    assert res.status_code == 503 and res.json()["code"] == "WHATSAPP_FAILED"
+    with database.open_db() as db:  # the unsent code was not kept
+        from models import OtpCode
+        assert db.query(OtpCode).count() == 0
+
+
+def test_login_id_must_be_an_email_or_phone(client):
+    res = client.post("/api/auth/login", json={"email": "hello", "password": PASSWORD})
+    assert res.status_code == 422 and res.json()["code"] == "INVALID_EMAIL"

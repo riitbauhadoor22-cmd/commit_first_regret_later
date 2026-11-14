@@ -15,9 +15,9 @@ A money app for young people aged **16–25**. It helps them:
 
 It is a **Progressive Web App (PWA)**. It opens in any phone browser (Chrome, Safari, Samsung Internet), can be added to the home screen, and still opens when offline.
 
-The app has **5 tabs** in a bottom tab bar: **Home (Dashboard)**, **Money**, **Targets**, **Loans**, **Arcade**. After logging in you land on the Dashboard.
+The app has **4 tabs** in a bottom tab bar, in this order: **Money**, **Dashboard**, **Loans**, **Profile**. After logging in you land on the Dashboard. (The old Targets tab is now **Money → Savings**; the old Arcade tab is now **Profile**, which also holds the Budget Challenge game.)
 
-**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and Targets tab (bank balance, monthly saving, safety net, goals) restored from the earlier version, plus the Loans tab. ✅ Arcade has the **Budget Challenge** game. 📝 Voice is **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
+**Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and its **Savings** view (bank balance, monthly saving, safety net, goals — the former Targets tab), plus the Loans tab. ✅ Profile has the account details, weekly budget + badges, the **Budget Challenge** game and Settings (Brighter / Darker theme, language, log out). 📝 Voice is **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
 
 ---
 
@@ -32,23 +32,25 @@ commitlocal/
 ├── .gitignore                  ← keeps .env, the database and junk files out of git
 │
 ├── frontend/                   ← everything the browser sees (HTML, CSS, plain JS)
-│   ├── index.html              ← ✅ 5 tab pages (Dashboard, Money, Targets, Loans, Arcade), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists)
-│   ├── login.html              ← ✅ Login / Register tabs, "enter your code" box, "account locked" box
-│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, code countdown + Resend OTP, calls /api/auth/...
-│   ├── style.css               ← ✅ dark navy glass theme (CSS variables at the top), cards, tab bar, bars (mobile-first, 360 / 390 / 430 px)
+│   ├── index.html              ← ✅ 4 tab pages (Money, Dashboard, Loans, Profile), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists, change password, "Log out?")
+│   ├── login.html              ← ✅ Login (email OR phone + password) / Register (name, username, email and/or phone, password) tabs, "enter your code" box, "account locked" box
+│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, quick checks (username, email-or-phone, Mauritius phone), code countdown + Resend OTP, calls /api/auth/...
+│   ├── theme.js                ← ✅ Brighter (default) / Darker theme: localStorage "theme" → `data-theme="darker"` on <html>; loaded in <head> of both pages before anything is drawn
+│   ├── style.css               ← ✅ navy glass theme: EVERY colour is a CSS variable at the top (`:root` = Brighter, `:root[data-theme="darker"]` = Darker), cards, tab bar, Dashboard grid, jars, Profile, dialog (mobile-first, 360 / 390 / 430 px)
 │   ├── api.js                  ← ✅ callApi() + one small function per endpoint (getSummary, addExpense, getGoals…); throws a friendly Error; 401 → login page
-│   ├── app.js                  ← ✅ login check, log out, tab switching (PAGES list), toasts, money/date formatting, open/close sheets, service worker
+│   ├── app.js                  ← ✅ login check, "Log out?" dialog, tab switching (PAGES = money, dashboard, loans, profile), toasts, money/date formatting, open/close sheets (focus returns to the opener), prefersLessMotion(), service worker
 │   │                              (replaced home.js, which is deleted)
-│   ├── money-tab.js            ← ✅ month switcher, summary card + 50·30·20 bar, Money in/out views, quick-add chips, category budgets, fixed bills, recent, Add expense/income/budget sheets, category pop-up (tap a category row)
+│   ├── money-tab.js            ← ✅ month switcher, summary card + 50·30·20 bar, Money in / Money out / Savings switch (showMoneyView, openSavingsView(goalId)), quick-add chips, category budgets, fixed bills, recent, Add expense/income/budget sheets, category pop-up (tap a category row)
 │   ├── budget-calc.js          ← ✅ spent-vs-budget maths (left / over / bar %, colour level); window.BudgetCalc + Node module.exports; loaded before money-tab.js
 │   ├── loan-calc.js            ← ✅ loan maths only (amortisation, extra payments, affordability, repaymentFor = EMI for an amount); window.LoanCalc + Node module.exports
 │   ├── game-calc.js            ← ✅ Budget Challenge live totals / split % / bar widths (pure, Node-tested; display only)
-│   ├── arcade-tab.js           ← ✅ Arcade tab: Budget Challenge game (levels, fields, event, result, previous results)
+│   ├── arcade-tab.js           ← ✅ Budget Challenge game (levels, fields, event, result, previous results) — shown on the Profile tab
+│   ├── profile-tab.js          ← ✅ Profile tab: My account (name, username, email, phone, occupation, password), shared-info lines, weekly budget + badges, theme buttons
 │   ├── loans-tab.js            ← ✅ Loans tab: forms, results, Chart.js graphs (CDN chart.js@4.4.1, hidden offline); section 2 calls /api/loans/predict
-│   ├── targets-tab.js          ← ✅ draws the Targets tab; New goal form; Add money; edit bank balance / monthly target
-│   ├── dashboard.js            ← ✅ Dashboard tab: draws GET /api/dashboard (balance, health score, spending / saving / loan graphs, recap, savings jar SVG, weekly budget + badges); no maths of its own, never the AI
-│   ├── jar-calc.js             ← ✅ savings jar coin count + deterministic positions (window.JarCalc + Node module.exports)
-│   ├── insights.js             ← ✅ "Financial insights" card (bottom of Money tab): 50/30/20 table, notes, goal progress, saved AI analysis, Generate/Refresh button (loaded after targets-tab.js: uses STATUS_KEYS)
+│   ├── savings-view.js         ← ✅ Money → Savings (was targets-tab.js, deleted): bank card, monthly saving, safety net, goals, New goal / Add money / bank / target pop-ups, showGoalCard(goalId); owns STATUS_KEYS / STATUS_CLASSES / PRIORITY_KEYS
+│   ├── dashboard.js            ← ✅ Dashboard tab: 2-column grid of tiles that open into blocks (balance, score, spending, saving rate, savings jars, loans, recap) from GET /api/dashboard; no maths of its own, never the AI
+│   ├── jar-calc.js             ← ✅ savings jar maths: liquid level (levelY), wave path, decoration coins, shouldAnimate (window.JarCalc + Node module.exports)
+│   ├── insights.js             ← ✅ "Financial insights" card (bottom of Money tab): 50/30/20 table, notes, goal progress, saved AI analysis, Generate/Refresh button (loaded after savings-view.js: uses STATUS_KEYS)
 │   ├── voice.js                ← 🆕 microphone → text (Web Speech API, or record audio for /api/speech-to-text)
 │   ├── manifest.json           ← 🆕 app name, icons, colours, start page, "standalone" (makes it installable)
 │   ├── service-worker.js       ← 🆕 caches the app files so the app opens with no internet
@@ -62,10 +64,11 @@ commitlocal/
     ├── database.py             ← ✅ SQLAlchemy connection from DATABASE_URL (SQLite or PostgreSQL), open_db(), runs Alembic, user-filtered query helpers
     ├── models.py               ← ✅ incoming forms (Pydantic) + the database tables (SQLAlchemy ORM, see section 6)
     ├── migrate_old_db.py       ← ✅ ONE-TIME: copies users + data from the old finance.db into the new tables
-    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py, 0005_ai_insights.py, 0006_optional_info.py, 0007_dashboard.py)
+    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py, 0005_ai_insights.py, 0006_optional_info.py, 0007_dashboard.py, 0008_profile.py). env.py switches SQLite foreign keys OFF while migrating, so a "batch" table copy can never cascade-delete rows
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
-    ├── security.py             ← ✅ password rules, bcrypt (14 rounds), 6-digit codes, session tokens
+    ├── security.py             ← ✅ password rules, bcrypt (14 rounds), password_matches() (never crashes on > 72 bytes), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
+    ├── whatsapp_sender.py      ← ✅ sends the 6-digit code by WhatsApp (Twilio sandbox) to phone-only accounts; keys only in .env
     ├── categories.py           ← ✅ CATEGORIES (+ default need/want) · 🆕 the other fixed lists: categories (+ default Need/Want), income types, frequencies
     ├── game/                   ← ✅ Budget Challenge logic (no UI, no routes): scenarios.py = config (levels, categories, min_amount, locked, events, points — edit here),
     │                             events.py (pick + effect), budget_engine.py (checks, totals in cents, over-income block), scoring.py (score + feedback)
@@ -76,7 +79,8 @@ commitlocal/
     ├── services/ai_insights.py ← ✅ the ONLY Groq code: settings from .env, prompt, one HTTP call (httpx, no retries), reply check (Pydantic), in-memory guards (one request per user, pause after 429)
     ├── expense_parser.py       ← 🆕 "I spent 245 on lunch" → {amount: 245, category: "Food & drinks", note: "lunch"}
     ├── routes/
-    │   ├── auth.py             ← ✅ /api/auth (+ `require_user` helper: 401 if not logged in) + /resend-code
+    │   ├── auth.py             ← ✅ /api/auth (+ `require_user` helper: 401 if not logged in) + /resend-code; find_user(email OR phone); deliver_login_code() = the ONE place a code is sent
+    │   ├── profile.py          ← ✅ /api/profile: own account only (name, username, email, phone, occupation, password); never returns the password hash
     │   ├── summary.py          ← 🆕 /api/summary: everything the Money tab's dark card + category rows need
     │   ├── income.py           ← 🆕 /api/income: list, add, edit, delete
     │   ├── expenses.py         ← ✅ /api/expenses: list, add · 🆕 edit, delete; quick-add chips
@@ -109,8 +113,9 @@ tests/frontend/game-calc.test.js ← ✅ game-calc.js (cents, never NaN, UTC→l
 tests/frontend/loan-calc.test.js ← ✅ Node built-in tests for loan-calc.js (run: node --test tests/frontend)
 tests/frontend/i18n.test.js     ← ✅ same keys + no empty values in en/fr/mfe, t() fallback, every data-i18n / t("…") / backend error code has a translation
 tests/frontend/budget-calc.test.js ← ✅ no budget, under / at / over, colour thresholds 79/80/100/101%
+tests/backend/test_profile.py ← ✅ Profile routes: own account only, name / username (taken, any case) / email (format, taken, wrong password, remove) / phone (normalised, taken, password) / occupation, can't remove both email and phone, password change (wrong / weak / mismatch / success logs other devices out), no reply of /api/auth/* or /api/profile* contains the hash, migration 0008 keeps old accounts + their rows
 tests/backend/test_dashboard.py ← ✅ the 15 Dashboard cases (new user, income + expenses, savings, no goals, 1 / several / incomplete loans, 6+ / 1 month history, weekly budget kept / over / too little recorded, no date, edits + deletes keep badges, several goals, other users) + health score rules, deterministic, no AI
-tests/frontend/jar-calc.test.js ← ✅ coin count follows %, never NaN / overfull, bottom-up stacking inside the jar, same positions every time, only new coins drop
+tests/frontend/jar-calc.test.js ← ✅ liquid level follows %, never NaN / overfull, valid subtle wave path, 0–6 coins inside the jar, same every time, animate only when savings went up
 tests/backend/test_optional_info.py ← ✅ the 12 "Permission Denied" cases: each topic alone, nothing at all, adding later, "I have none" + undo, editing / deleting, AI gets only given data, migration 0006 keeps old values, other users, validation
 tests/backend/test_insights.py ← ✅ check-up maths, no personal text sent, cache reuse, page loads / tab changes / adding expenses never call Groq, outdated after changes, refresh, repeated clicks, cooldown, 2 requests at once → 1 call, daily limit, Groq error / bad JSON / 429 pause, no key, other users. Groq is ALWAYS faked (`fake_groq` fixture in conftest.py, autouse) — tests can never reach the real API
 tests/backend/test_inflation.py ← ✅ CPI builder (temp files), 12-month rate, projection + edge cases, endpoints (uses tests/fixtures/cpi_sample.csv = FAKE data)
@@ -120,10 +125,10 @@ tests/backend/                  ← pytest + FastAPI TestClient (temporary datab
     ├── test_money.py           ← ✅ expenses (incl. bad amounts), cents storage, UUIDs, budgets, income, savings, goals
     ├── test_budgets_expenses.py ← ✅ budget set/update + /api/budget alias, bad input, add/edit/delete, month+category filter, other users
     ├── test_security_db.py     ← ✅ user A can't read/edit/delete user B's data, ON DELETE CASCADE, CHECK (no negative amounts)
-    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak), login (right / wrong / unknown), /me, Gmail not set up → 503 (SMTP faked)
+    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak; username rules + taken any case; email only / phone only / both / neither; phone normalised / invalid / taken), login (right / wrong / unknown; by phone; phone-only → code on WhatsApp (faked), resend on WhatsApp, Twilio keys missing → 503 PHONE_CODE_NOT_AVAILABLE, Twilio fails → 503 WHATSAPP_FAILED), /me, Gmail not set up → 503 (SMTP faked)
     ├── test_income_summary.py  ← ✅ regular vs one-off income per month, fixed bills, budget none/under/at/over, summary maths (In/Out/Saved/Left, 50·30·20 %)
     └── test_route_safety.py    ← ✅ reads EVERY /api route from main.app: 401 when logged out; no 500 on empty / negative / 1e20 / Infinity / NaN / text input
-tests/frontend/smoke.test.js    ← ✅ static checks: script order, every called function defined, every JS id exists in the HTML, manifest + icons, SW caches scripts, no API keys, .gitignore / .env.example
+tests/frontend/smoke.test.js    ← ✅ static checks: script order (theme.js first), tab bar = Money/Dashboard/Loans/Profile with no Targets/Arcade links, Log out asks first, every called function defined, every JS id exists in the HTML, manifest + icons, SW caches scripts, no API keys, .gitignore / .env.example
 
 **Run all tests** (from the project folder):
 `backend\venv\Scripts\python -m pytest tests/backend -q` and `node --test tests/frontend`
@@ -136,8 +141,8 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 ## 3. How the logic works
 
 ### Login and registration ✅
-1. **Register** → name, email, password twice → the strength meter turns red→green and ticks each rule → Python checks the rules again → the email is saved in lowercase (so `Asha@X.com` = `asha@x.com`) → the password is saved as a **bcrypt hash (14 rounds)**.
-2. **Log in, step 1** → email + password → if correct, Python emails a **6-digit code** through Gmail (it expires in **5 minutes**).
+1. **Register** → full name, **username** (required: 3–30 letters / digits / `.` `_` `-`, saved lowercase, unique in any case → 409 `USERNAME_TAKEN`), **email and/or phone** (at least one → else 422 `EMAIL_OR_PHONE_REQUIRED`; email lowercase + unique → `EMAIL_TAKEN`; phone = Mauritius `+230` + 7 digits or 8 digits starting with 5, spaces / dashes removed, saved as `+230XXXXXXXX` in `profiles.phone`, unique → `PHONE_TAKEN`, bad → 422 `INVALID_PHONE`), password twice → the strength meter turns red→green and ticks each rule → Python checks everything again (`models.py`: `clean_username`, `clean_phone`, `clean_email`, `RegisterForm` model validator) → the password is saved as a **bcrypt hash (14 rounds)**. The username is never used to log in.
+2. **Log in, step 1** → **email OR phone number** + password (the JSON field is still called `email`; `clean_login_id` turns it into a lowercase email or `+230…`) → if correct, a **6-digit code** is sent by `deliver_login_code()` in `routes/auth.py` (expires in **5 minutes**): accounts with an email → Gmail. **Phone-only accounts → WhatsApp** (`whatsapp_sender.py`, Twilio WhatsApp sandbox; reply code `CODE_SENT_WHATSAPP` / `CODE_RESENT_WHATSAPP`). Twilio keys missing → 503 `PHONE_CODE_NOT_AVAILABLE` ("log in with email"); Twilio can't send (e.g. the phone hasn't joined the sandbox, error 63015) → 503 `WHATSAPP_FAILED`; in both cases the unsent code isn't kept. One try, never retried; the code and token are never logged.
 3. **Log in, step 2** → the user types the code → if correct, Python creates a session and puts it in an **HttpOnly cookie** (JavaScript can't read it) → the user is logged in for 7 days.
 4. **3 wrong passwords** → the account is **locked**, and even the right password won't work → the user taps **"Send me a login code"** → enters the emailed code → logged in **and unlocked**.
 5. **Safety limits:** a code dies after 5 wrong guesses; a new code replaces the old one; a new unlock code ("Send me a login code") can only be sent once every 60 seconds.
@@ -151,9 +156,12 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 - A pop-up closes **only** from its X / Cancel buttons (`data-close`), after a successful save, or a tap on the **dark overlay itself** (`event.target === overlay`, and the press must also have *started* on the overlay).
 - There are **no** blur / focusout / resize handlers, so the phone keyboard opening (which resizes the screen) can't close it. The box has `max-height: 90dvh; overflow-y: auto`, so it scrolls instead.
 - Every button that isn't "Save" has `type="button"`, so it never submits a form.
+- `openSheet` remembers the focused button; `closeSheet` puts focus back on it (keyboard / screen readers).
+- **Log out confirmation**: every Log out button (top right of each page, Profile → Settings; class `.logout-btn`) opens `#sheet-logout` (a centred dialog, `role="alertdialog"`): "Log out?" + text, **Cancel** (focused first) and **Log out** (`.btn-danger`). Cancel / Esc / tap outside close it and nothing happens. Log out shows "Logging out…", disables both buttons, calls POST `/api/auth/logout` (session deleted on the server, cookie cleared) and opens `login.html`. Never `confirm()`.
 
 ### Money tab ✅ (restored full version — see Section 4, Tab 1)
-- Uses GET `/api/summary`, `/api/expenses`, `/api/expenses/quick`, `/api/income`; POST/PUT/DELETE expenses + income; PUT `/api/budgets` (`monthly_limit: null` removes). Targets uses `/api/savings`, `/api/savings/safety-net/add-money`, `/api/goals` (+ `/{id}/add-money`). All checked against the backend routes.
+- Uses GET `/api/summary`, `/api/expenses`, `/api/expenses/quick`, `/api/income`; POST/PUT/DELETE expenses + income; PUT `/api/budgets` (`monthly_limit: null` removes). The **Savings** view (`savings-view.js`) uses `/api/savings`, `/api/savings/safety-net/add-money`, `/api/goals` (+ `/{id}/add-money`), loaded when the view (or the Money tab while Savings is shown) opens. All checked against the backend routes.
+- Switch **Money in | Money out | Savings** (`showMoneyView`). The month picker + "Left to spend" card stay on top for all three; Financial insights stay at the bottom. After adding money / changing savings, both the Savings view and the summary card reload (`reloadAfterSaving`). `openSavingsView(goalId, openAddMoney)` opens Money → Savings from anywhere (Dashboard jar, shortcuts) and scrolls to + highlights that goal's card.
 - *Old notes from the simple version (replaced):*
 - Tap the **Expenses** card → pop-up with **Add expense** (amount, category, description, date = today) or **Set budget** (category + monthly limit → PUT `/api/budgets`).
 - Budget card: **overall budget = sum of all category budgets** (GET `/api/budgets`); **spent = everyday + fixed bills** of this month (GET `/api/expenses` → `everyday` + `fixed`).
@@ -177,7 +185,7 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 - **`t("key", {name: …})`** → text in the current language, English if missing, `""` if unknown (never the raw key / "undefined"). `{name}` placeholders are filled from the object.
 - **HTML:** `data-i18n="key"` (text), `data-i18n-placeholder`, `data-i18n-aria` (aria-label), `data-i18n-params='{"n":1}'`. Text next to an input inside a `<label>` is wrapped in `<span data-i18n>`.
 - **JS:** `t("key")` for built text; `setText(element, key, params)` for elements that should re-translate by themselves (titles, hints).
-- **Switching:** `setLanguage(code)` → re-applies every `data-i18n`, then fires `i18n:change`; `app.js` redraws the open tab (`redrawMoneyTab` incl. the open category pop-up, `loadTargetsTab`, `redrawLoans` incl. graph labels); `login.js` redraws the meter / code timer.
+- **Switching:** `setLanguage(code)` → re-applies every `data-i18n`, then fires `i18n:change`; `app.js` redraws the open tab (`redrawMoneyTab` incl. the open category pop-up and the Savings view, `redrawDashboard`, `redrawLoans` incl. graph labels, `redrawProfile`); `login.js` redraws the meter / code timer.
 - **Kept English on purpose:** values sent to the API (categories, income types, `On track` status, bar labels "Safety net"/"Free") — only their DISPLAY is translated (`tCategory`, `tIncomeType`, `STATUS_KEYS`, `PRIORITY_KEYS`). Money is always "Rs 12,345". Dates use `Intl.DateTimeFormat` (`en-MU`, `fr-MU`; Kreol uses French month names).
 - **Backend error codes:** routes raise `AppError(404, "GOAL_NOT_FOUND", "Goal not found.")`; Pydantic 422 errors get a code from the field name (`FIELD_CODES` in `errors.py`, e.g. amount → `INVALID_AMOUNT`). Reply: `{"detail": <English message or the old Pydantic list>, "code": "...", "params": {...}}`. `readErrorMessage` (api.js) / `readMessage` (login.js) show `t("error.<CODE>")` (or `auth.<CODE>` for good news) and fall back to `detail`. The backend never translates.
 - **Add a new string:** add the key to `en.json`, `fr.json` AND `mfe.json` (the tests fail if one is missing or empty), then use `data-i18n="key"` or `t("key")`.
@@ -215,7 +223,7 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 11. **Goal status:** go through goals by priority (High first; same priority → earlier deadline first). Give each goal money from the monthly saving target until it runs out. A goal that gets at least what it needs = **On track**, otherwise **Needs more**. A finished goal (saved = target) = **Done**.
 12. **Too-many-goals warning:** if all goals together need more per month than the saving target → "Your goals need Rs X a month, but you save Rs Y. Push a date back or focus on one goal first."
 13. **Adding money to a goal** → save a deposit, add it to `goal.saved_amount` and to `savings.bank_balance`. The amount must be positive and can't push saved above target (it is capped at what's still needed). Adding to the **safety net** works the same, using `safety_net_saved` (deposit with empty goal_id).
-14. **Bank bar** (Targets dark card) = bank_balance split into: safety net, one segment per goal (its saved amount), and the rest ("free").
+14. **Bank bar** (Money → Savings dark card) = bank_balance split into: safety net, one segment per goal (its saved amount), and the rest ("free").
 15. **Quick add chips** = everyday expenses from the last 30 days, grouped by (note, amount), the 4 most frequent (ties → most recent). One tap → `POST /api/expenses/quick` saves the same expense again with today's date and `source = "quick"`.
 
 ### Inflation estimate for goals (Statistics Mauritius CPI) ✅
@@ -224,7 +232,7 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 - Rate r = index[latest] / index[latest − 12 months] − 1 (3-year average only if 37+ months; not the case now). Months = whole months to the deadline. projected_cost = target × (1 + r)^(months/12), rounded to the rupee; monthly saving original/adjusted = (target or projected − saved) ÷ months.
 - Goal category → CPI category: `GOAL_CPI_CATEGORIES` in `categories.py` (edit there). No/unknown category or < 13 months → "All Items" (+ FALLBACK_ALL_ITEMS warning).
 - Edge cases: deadline passed / < 1 month → `available: false` (DEADLINE_PASSED / DEADLINE_TOO_SOON); > 5 years → LONG_HORIZON warning; falling prices handled normally; fully funded → FUNDED_BUT_SHORT if the projection is above what's saved.
-- Frontend (`targets-tab.js`): each goal card fetches its estimate; the goal form has a "What is it for?" select and a live preview (400 ms after typing). Texts: `inflation.*`, `goalCat.*`, `cpi.*` keys. Always labelled "Estimate only" with source and data month.
+- Frontend (`savings-view.js`): each goal card fetches its estimate; the goal form has a "What is it for?" select and a live preview (400 ms after typing). Texts: `inflation.*`, `goalCat.*`, `cpi.*` keys. Always labelled "Estimate only" with source and data month.
 
 ### Financial insights (Groq AI, only when asked) ✅
 Card at the bottom of the Money tab (`insights.js`), for the month picked at the top.
@@ -237,7 +245,7 @@ Card at the bottom of the Money tab (`insights.js`), for the month picked at the
 - `enough_for_ai` = at least one topic has real records. Otherwise generate answers 400 `AI_NOT_ENOUGH_DATA` without calling Groq.
 - Remaining = income − needs − wants − savings. Percent of income per group, and the difference in points from 50 / 30 / 20 ("savings & debt" = savings, since loans aren't recorded). No income → percents are `null` (shown as "—").
 - Notes (codes, translated in `lang/*.json` as `insights.obs.*`): NO_INCOME, OVER_INCOME, NEEDS_ABOVE / WANTS_ABOVE / SAVINGS_BELOW (only when 5+ points off), WITHIN_GUIDE, SPENDING_UP / SPENDING_DOWN (only when 10%+ vs last month, and only if last month has spending), GOALS_BEHIND. Gaps: `insights.gap.*`.
-- Goal progress = the same rules as the Targets tab (`get_goal_statuses`). 50/30/20 is described as a guide, never as a rule.
+- Goal progress = the same rules as Money → Savings (`get_goal_statuses`). 50/30/20 is described as a guide, never as a rule.
 
 **2. What Groq gets** (`build_ai_summary`): only calculated numbers: income, needs, wants, savings, remaining, the 50/30/20 table, top 6 categories with amounts, fixed bills total, change vs last month, saving target, safety net, goals as "Goal 1, Goal 2…" (category, target, saved, %, needs/month, months left, status, priority) and the list of missing information. **No** names, goal names, notes, email or ids.
 
@@ -259,7 +267,9 @@ Card at the bottom of the Money tab (`insights.js`), for the month picked at the
 
 **Settings** (`backend/.env`, empty = default): `GROQ_API_KEY`, `GROQ_MODEL` (openai/gpt-oss-20b), `AI_DAILY_LIMIT` (5 per user per UTC day), `AI_COOLDOWN_SECONDS` (60), `AI_MAX_OUTPUT_TOKENS` (1000), `AI_MAX_INPUT_CHARS` (6000), `AI_TIMEOUT_SECONDS` (25).
 
-### Dashboard (first tab after login) ✅
+### Dashboard (first page after logging in) ✅
+**Layout:** a 2-column grid (`.dash-grid`, gap 12 px) of blocks. Each starts as a small tile = a `<button aria-expanded aria-controls>` with icon + title + one key number: 🏦 Available · Rs X, ❤️ Score · 72, 💸 Spent · Rs X (this month), 💰 Saving rate · 14%, 🫙 Savings · 40% (`jar.overall_percent` = all goals' saved ÷ all targets, from the backend), 📉 Loans · Rs X / "No loans" / "Not shared 🔒", 🧾 Recap · month. Missing data = "—", never Rs 0. Tapping a tile opens the block across both columns (CSS grid rows 0fr → 1fr + fade, 250 ms; ▾ / ▴); tapping again closes it; only one is open; the open one is remembered in `localStorage "dashOpenBlock"` (try/catch). After opening, the block's Chart.js graphs are `resize()`d. `prefers-reduced-motion` = no animation. The new-user welcome card stays above the grid. Weekly budget + badges moved to **Profile**.
+
 One GET `/api/dashboard?today=YYYY-MM-DD` (the phone's local date; ignored if more than 2 days from the server's) → `services/dashboard.py`. Plain maths on the logged-in user's own rows; **never Groq**. Opening the tab = that one GET (no AI, no other calls). Every part says when it can't be worked out instead of showing Rs 0 (same provided / none / missing rules as below).
 
 1. **Available this month** = this month's income − expenses (everyday + fixed bills) − saved loans' monthly repayments − deposits into goals / safety net. Deposits are not expenses here, so nothing is counted twice; the app has no account-to-account transfers. Needs income + expenses known; unknown loans are left out and said so. State: positive / neutral (under Rs 1) / negative. Compared with last month when last month can be worked out too. "Already put aside" = goals' saved + safety net (kept apart from available cash; bank balance shown only if given). It is a **monthly** balance: a running total since the first record would need months nobody entered.
@@ -273,9 +283,24 @@ One GET `/api/dashboard?today=YYYY-MM-DD` (the phone's local date; ignored if mo
    - Savings consistency 25 (only if the user saves): saved this month (10), share of the last 3 months with a deposit since saving started (10, needs 2+ months), goals On track / Done (5, needs a known target).
    - Financial commitments 20: "I don't have a loan" = 20. With loans: repayments ÷ income ≤ 30% / ≤ 40% (10), income − spending − repayments ≥ 0 (10). "Paid on time" is never judged (no history: never assume missed).
    - Levels: ≥ 80 Excellent, ≥ 60 Good, ≥ 40 Fair, else Needs attention. "What helped most" = best check; tip = weakest check (`dash.health.improve.*`).
-7. **Weekly budget + badges**: PUT `/api/dashboard/weekly-budget {amount | null, today}` (`weekly_budgets`, one per user; changing the amount keeps the start date). Weeks = Monday–Sunday in the user's local dates; only **finished** weeks from the first full week after the budget was set; only everyday expenses (monthly fixed bills aren't weekly). A week is **kept** when spending ≤ budget AND spending was recorded on ≥ 3 different days (an empty week is not proof). Badges (`earned_badges`, unique per user + code, never deleted, earned_on = the Sunday): FIRST_WEEK (first kept week), BUDGET_KEEPER (2 kept weeks in a row), CONSISTENT_PLANNER (4 kept weeks), SAVINGS_STREAK (a deposit in 4 finished weeks in a row). Checked on every dashboard load; new ones get a toast. The weekly bar shows this week's spending, days left and days recorded.
-8. **Savings jar** (`jar-calc.js` + SVG in `dashboard.js`): one goal at a time (chips). Coins = round(% × 90), at least 1 if anything is saved, stacked bottom-up 5 per row (18 rows), so the pile height follows the % exactly; positions from a fixed hash (never random), clipped to the jar's inside. Coins drop in (CSS, 0.55 s) **only when the saved amount went up since this phone last showed it** (`localStorage "jarSeen.<goal id>"`, in try/catch: no storage = no animation). Decreases redraw without dropping. 100% = full jar + sparkles. No goals → "Create a savings goal…".
-- New user: welcome card with + Add income / + Add expense / + New goal / + Add a loan (they open the right tab and form).
+7. **Weekly budget + badges** (shown on the **Profile** tab, same data from GET `/api/dashboard`; badges are still checked and saved on every load of that GET): PUT `/api/dashboard/weekly-budget {amount | null, today}` (`weekly_budgets`, one per user; changing the amount keeps the start date). Weeks = Monday–Sunday in the user's local dates; only **finished** weeks from the first full week after the budget was set; only everyday expenses (monthly fixed bills aren't weekly). A week is **kept** when spending ≤ budget AND spending was recorded on ≥ 3 different days (an empty week is not proof). Badges (`earned_badges`, unique per user + code, never deleted, earned_on = the Sunday): FIRST_WEEK (first kept week), BUDGET_KEEPER (2 kept weeks in a row), CONSISTENT_PLANNER (4 kept weeks), SAVINGS_STREAK (a deposit in 4 finished weeks in a row). Checked on every dashboard load; new ones get a toast. The weekly bar shows this week's spending, days left and days recorded.
+8. **Savings jars** (`jar-calc.js` + SVG in `dashboard.js`, no libraries): **one jar per goal** in a sideways swipe list (CSS scroll-snap). Goal name above, "Rs X of Rs Y saved (Z%)" under it. Glass jar + lid; **liquid** clipped to the jar's inside fills from the bottom to saved ÷ target (`JarCalc.levelY`), with a gentle **wave** (two SVG paths sliding sideways in a CSS loop); 1–6 **coins** rest at the bottom (fixed spots, never random). **Only when the saved amount went up since this phone last showed that goal** (`localStorage "jarSeen.<goal id>"`, try/catch) the level rises from the old % to the new one (CSS keyframes, 1.2 s) and one coin drops in; the animation waits until the jar block is open (the seen amount is only saved when the jar was visible). Decreases just show the new level. 100% = short sparkles + "Goal reached! 🎉". Tapping a jar opens **Money → Savings** at that goal. `prefers-reduced-motion`: no wave, coin or rise. No goals → "Create a savings goal…" + "+ New goal" (opens the goal form in Money → Savings).
+- New user: welcome card with + Add income / + Add expense / + New goal / + Add a loan (they open the right tab and form; New goal → Money → Savings).
+
+### Profile tab ✅ (`profile-tab.js`, `routes/profile.py`)
+In order:
+1. **My account** (looks like an account page): avatar letter, name, @username, then rows Name · Username · Email · Phone number · Occupation · Password, each with **Edit / Add**. Edit opens an inline form with Save / Cancel ("Saving…" while it runs). The value on screen only changes after the server says OK, then GET `/api/profile` is read again; errors are the translated `error.<CODE>` texts.
+   - **Name** = `profiles.full_name` (1–100 characters, not blank). **Username** = `users.username` (3–30 letters / digits / . _ -, lowercase, unique in any case → 409 `USERNAME_TAKEN`; old accounts show "Add a username"). Names are not unique; usernames are.
+   - **Email**: needs the **current password** (400 `WRONG_PASSWORD`, never 401 because 401 = "logged out" for the app), valid format, lowercase, not used by another account (409 `EMAIL_IN_USE`). Empty = remove it (only while a phone is left). There is no separate email-verification step: the next login code is emailed to the new address, so logging in again proves it.
+   - **Phone**: same Mauritius rules as registration, needs the current password, unique (409 `PHONE_TAKEN`), empty = remove (only while an email is left). Removing the last of email / phone → 400 `NEED_EMAIL_OR_PHONE`.
+   - **Occupation** (`profiles.occupation`, up to 60 characters, optional): input + `<datalist>` suggestions (Student, Employed, Self-employed, Part-time, Looking for work, Other) or own text; empty = removed ("Not added").
+   - **Password**: shown as "••••••••" (never the password or hash). "Change password" pop-up: current / new / confirm, each with its own Show/Hide, live rule ticks (same rules as registration). Server: bcrypt check of the current one, `get_password_problems`, new == confirm, `hash_password`; **every other session of the user is deleted** (other devices are logged out), this one stays.
+   - Two read-only lines from GET `/api/info-status`: "Money in" and "Loans": Shared / Marked as none / Not shared 🔒 (+ "Add it" → Money → Money in, or the Loans tab).
+2. **Weekly budget & badges** — moved from the Dashboard, same design and rules (GET `/api/dashboard`, PUT `/api/dashboard/weekly-budget`).
+3. **Budget Challenge** — the game, unchanged (`arcade-tab.js`).
+4. **Settings** — Theme **Brighter (default) / Darker** (`theme.js`, `localStorage "theme"`, applied in `<head>` before the first paint), Language picker, **Log out** (asks first).
+
+All `/api/profile*` routes use `require_user` (the user id comes from the session cookie, never from the browser) and never return `password_hash` (tested for every auth and profile route).
 
 ### Optional financial information ("Permission Denied") ✅
 The user may refuse any money detail. The app never asks for income, expenses, loans or savings at registration, and every tab opens without them.
@@ -299,7 +324,7 @@ Real records always win over a "none" choice. Income / expenses choices are per 
 Prompts (texts as in the brief): "Add your income information to view income-based insights." · "Start recording your expenses to see your spending breakdown." · "Add your loan details to view repayment predictions." · "Create a savings goal to start tracking your progress." Shared helper `makeInfoPrompt()` in `app.js`.
 
 - **Money tab:** dark card shows "—" for unknown In / Out / Saved / Left to spend, no 50/30/20 bar without income + expenses, and one prompt per missing topic (+ Add, + "none"). Category rows show "—" instead of Rs 0 while expenses are missing.
-- **Targets tab:** "Not added yet" bank balance (adding money to a goal doesn't invent one), "—" monthly target with a note when there's no income and no own target (the "use 20%" button is hidden), goal status "No target", savings prompt with "I'm not saving right now".
+- **Money → Savings:** "Not added yet" bank balance (adding money to a goal doesn't invent one), "—" monthly target with a note when there's no income and no own target (the "use 20%" button is hidden), goal status "No target", savings prompt with "I'm not saving right now".
 - **Loans tab:** "Saved loans" list (tap = show its plan, Delete), "+ Add another loan", optional "Loan name", "Save this loan" after a good calculation (same checks as Calculate: amount > 0 and ≤ Rs 10 crore, rate 0–100%, repayment > 0; the backend checks the same). "Existing repayments" in section 2 is pre-filled from the saved loans; income / expenses are only pre-filled when given.
 - **Bank balance** can be cleared again (PUT `/api/savings` with `bank_balance: null`).
 - **Device permissions:** the app asks for none (no camera, location, contacts, notifications or microphone; the mic button only opens the Add expense form until voice is built). Nothing to deny.
@@ -319,7 +344,37 @@ Prompts (texts as in the brief): "Add your income information to view income-bas
 
 ## 4. Screens 🆕
 
-**Design (current):** dark blue banking "glass" theme. CSS variables at the top of `style.css`: navy gradient background `#070d1f`→`#0d1a3a` with blue/cyan glows, frosted translucent cards (`backdrop-filter: blur`), glowing blue gradient buttons, cyan→blue progress bars, floating frosted 4-tab bar, dark bottom sheets. Green `#3ddc84` = money in, orange `#ff9a4a` = money out. Chart.js in blue/cyan/green/orange with light text. Manifest + meta theme `#070d1f`; SW cache `my-money-v9`. Inputs 16px, tap targets ≥ 44px.
+**Design (current):** navy banking "glass" theme, **Brighter** by default (Profile → Settings → Theme). Every colour is a CSS variable in ONE place at the top of `style.css`: `:root` = Brighter, `:root[data-theme="darker"]` = the earlier values.
+
+| Variable | Darker (before) | Brighter (now, default) |
+|---|---|---|
+| `--bg` | `#070d1f` | `#101e49` |
+| `--bg-2` | `#0d1a3a` | `#162d64` |
+| `--glow` | `rgba(45,120,255,.35)` | `rgba(60,135,255,.38)` |
+| `--glow-2` (was hard-coded) | `rgba(56,214,255,.12)` | `rgba(56,214,255,.14)` |
+| `--glass` (card fill) | `rgba(255,255,255,.06)` | `rgba(255,255,255,.09)` |
+| `--glass-strong` | `rgba(255,255,255,.10)` | `rgba(255,255,255,.14)` |
+| `--glass-border` | `rgba(160,190,255,.16)` | `rgba(170,200,255,.24)` |
+| `--field` | `rgba(255,255,255,.07)` | `rgba(255,255,255,.09)` |
+| `--inset` (was hard-coded) | `rgba(7,13,31,.35)` | `rgba(10,20,52,.32)` |
+| `--sheet` | `#0c1530` | `#152555` |
+| `--sheet-top` (was hard-coded) | `#11204a` | `#1a306f` |
+| `--overlay` (was hard-coded) | `rgba(2,6,18,.7)` | `rgba(4,10,30,.62)` |
+| `--tabbar-bg` (was hard-coded) | `rgba(13,22,48,.75)` | `rgba(24,40,88,.82)` |
+| `--toast-bg` / `--toast-error` | `#16295c` / `#6b1a2a` | `#1e387d` / `#7a2234` |
+| `--card-shadow` | `0 10px 30px rgba(0,0,0,.25)` | `0 10px 28px rgba(3,8,25,.28)` |
+| `--dark-card-end` | `rgba(13,26,58,.6)` | `rgba(22,45,100,.55)` |
+| `--label-on-dark` | `#c3d2f5` | `#d0dcf7` |
+| `--muted` | `#9fb0d6` | `#b4c2e3` |
+| `--placeholder` | `#7183ad` | `#8f9fc4` |
+| `--line` | `rgba(160,190,255,.14)` | `rgba(170,200,255,.18)` |
+| `--track` / `--split-track` | `rgba(255,255,255,.08)` / `rgba(7,13,31,.5)` | `rgba(255,255,255,.10)` / `rgba(10,20,52,.45)` |
+| `--blue-soft` | `rgba(61,139,255,.16)` | `rgba(61,139,255,.18)` |
+| `--danger` | `#ff6b7d` | `#ff7d8c` |
+
+Unchanged: `--text #eef3ff`, accents (blue, cyan, green, orange). Contrast (WCAG, card = glass over the page): Brighter `--text` 11.2 : 1 (top) / 9.1 : 1 (bottom of the gradient), `--muted` 7.0 / 5.7 : 1, on pop-ups 13.2 / 8.2 : 1; Darker `--text` 15.3 / 13.2, `--muted` 7.8 / 6.7. Accent tints (e.g. `rgba(61,220,132,.15)` behind a status tag) are still written next to their rule.
+
+*Before the brighter look:* dark blue banking "glass" theme. CSS variables at the top of `style.css`: navy gradient background `#070d1f`→`#0d1a3a` with blue/cyan glows, frosted translucent cards (`backdrop-filter: blur`), glowing blue gradient buttons, cyan→blue progress bars, floating frosted 4-tab bar, dark bottom sheets. Green `#3ddc84` = money in, orange `#ff9a4a` = money out. Chart.js in blue/cyan/green/orange with light text. Meta theme `#101e49`; SW cache now `my-money-v19`. Inputs 16px, tap targets ≥ 44px.
 
 *Previous design (replaced):* light, clean theme. CSS variables at the top of `style.css`: grey background `#f3f5f8`, white 18px-rounded cards with thin `#e6e9ef` border, dark `#15171d` budget card, solid royal-indigo `#2f3fbf` buttons/links, grey segmented tabs with white active pill, green in `#1e8e4f` / orange out `#e0650b`, text `#1b1d24`, muted `#6b7280`, light-indigo tip boxes. White floating tab bar, light bottom-sheet pop-ups, Chart.js in indigo/green/orange. Manifest + meta theme `#F3F5F8`; SW cache `my-money-v7`.
 
@@ -330,6 +385,7 @@ A small **Log out** button sits at the top right of each tab.
 
 ### Tab 1: Money
 - Title "Money" + month picker.
+- Switch **[Money in] [Money out] [Savings]** — Savings = the former Targets tab (see "Tab 2" below, now inside Money).
 - **Dark card:** big "Left to spend this month"; small In (+green) · Out (−orange) · Saved; Needs/Wants/Savings bar + "aim 50 · 30 · 20".
 - Switch **[Money in] [Money out]** — Money out shows first.
 - **Money out:**
@@ -343,7 +399,7 @@ A small **Log out** button sits at the top right of each tab.
 - **Add expense** screen: big Rs amount, "Say it" button, category grid, Need/Want toggle (pre-picked from the category, can be changed), note, date (today), "Repeats every month" (= fixed bill), Save.
 - **Add income** screen: name, type, amount, how often (Monthly / Weekly / One-off), date.
 
-### Tab 2: Targets
+### Money → Savings (was Tab 2: Targets)
 1. **Dark card:** "Saved in your bank" (tap to update) + bank bar (safety net + one colour per goal + free).
 2. **Monthly saving:** target per month (editable) + "Rs 2,500 of Rs 3,700 put away".
 3. **Safety net:** target = 3 × fixed bills, % reached, "+ Add money".
@@ -352,8 +408,8 @@ A small **Log out** button sits at the top right of each tab.
 
 ### Tab 3: Loans — see "Tab 4: Loans" in Section 3.
 
-### Tab 4: Arcade
-**Budget Challenge** card first (Game 1), then Play / Result / Previous results cards, then the old "Coming soon" card + dashed boxes [Game 2]–[Game 4].
+### Tab 4: Profile (was Arcade) — see "Profile tab" in section 3
+The **Budget Challenge** (Game 1: Play / Result / Previous results cards) lives in the Profile tab, after the weekly budget. The old "Coming soon" card and dashed [Game 2]–[Game 4] boxes were removed.
 - **Config** (`backend/game/scenarios.py`, GET `/api/game/levels`; amounts fictional, said in the UI): L1 "Student Life" Rs 15,000 (Food and groceries, Transport, Phone and internet, Study materials, Entertainment, Personal expenses, Savings; nothing locked) · L2 "First Job" Rs 30,000 (Rent or household contribution, Groceries, Transport, Utilities, Phone and internet, Entertainment, Shopping, Savings, Loan repayment 🔒 Rs 2,500) · L3 "Independent Living" Rs 45,000 (Rent 🔒 Rs 12,000, Groceries, Electricity and water, Transport, Phone and internet, Healthcare, Entertainment, Personal expenses, Savings, Loan repayment 🔒 Rs 3,000). Groups: Needs 50% · Wants 30% · **Savings & debt** 20% (loan repayments are here). Essentials have `min_amount`. 4 events per level: `cost` (raises a category's minimum), `discount` (lowers it), `bonus` (adds income); e.g. bus fare +500/700, grocery discount 300/500/600, charger 400, utilities +600/900, doctor 1,200, bonus 1,000/1,500/2,000. Texts: `game.cat.<id>`, `game.event.<id>`, `game.levelTitle.<n>`, `game.levelStory.<n>`, `game.group.*`, `game.crit.*`, `game.tip.*`.
 - **Flow:** pick level (events toggle for every level, default on) → POST `/api/game/attempts` (server makes `attempt_id`, picks the event, keeps it secret) → fill amounts (🔒 fields disabled, "Suggested at least Rs X", live Allocated / Remaining, per-group % + Rs bar; over income → red warning and Submit disabled, server also answers 400 `GAME_OVER_INCOME`; unallocated money is allowed) → submit (`final:false`) → event + its effect shown, hints/income updated → adjust once → `final:true` → result: income, allocated, remaining, group bars vs 50·30·20, breakdown, feedback, XP; Play again / Choose another level / Previous results (dates shown in the phone's local time). Events off → straight to final.
 - **Score (server, `game/scoring.py`, cents):** budget balance 30 (within income: ≤10% unallocated = 30, ≤25% = 20, more = 10) · essential coverage 25 (share of essentials ≥ min; a discount lowers the min) · allocation 20 (distance to 50·30·20; if the scenario's need minimums exceed 50%, the Needs target rises and Wants shrinks; Needs above target count half; ≤10 → 20, ≥50 → 0) · savings 15 (Savings category up to 10% of income, nothing extra above; max 5 if an essential is short) · events 10 (within income and the event-raised minimums met; events off → automatic 10; a missed cost event only loses these 10). Feedback codes explain each part (balanced, essential_short, high_needs_ok, large_wants, unassigned, …).
@@ -368,7 +424,7 @@ A small **Log out** button sits at the top right of each tab.
  ┌───────────────────────────────┐          ┌──────────────────────────────┐
  │ index.html + style.css        │          │ main.py (FastAPI)            │
  │ app.js ── tabs, pop-ups       │  fetch   │  routes/summary, income,     │
- │ money-tab.js, targets-tab.js  │─────────►│  expenses, budgets, savings, │
+ │ money-tab.js, savings-view.js │─────────►│  expenses, budgets, savings, │
  │ api.js ── talks to backend    │  /api/…  │  goals, voice                │
  │ voice.js ── microphone        │◄─────────┼──    ▼                       │
  │ service-worker (offline)      │   JSON   │  money.py, expense_parser.py │
@@ -398,7 +454,7 @@ One database, read with **SQLAlchemy** (ORM) from `DATABASE_URL` in `.env`: **SQ
 
 ```
                          users  (login data only)
-                         id UUID PK · email (unique, lowercase) · password_hash
+                         id UUID PK · email (unique, lowercase, optional) · username (unique) · password_hash
                          failed_attempts · is_locked · created_at
                                          │  user_id FK, ON DELETE CASCADE
    ┌──────────┬───────────┬──────────┬───┴──────┬──────────┬──────────┬──────────────────┬──────────────┐
@@ -412,8 +468,8 @@ profiles  otp_codes   sessions    income    expenses   budgets  savings_settings
 
 | Table | Columns (money = `_cents`) | Notes |
 |---|---|---|
-| `users` | id, email, password_hash, failed_attempts, is_locked, created_at | locked after 3 wrong passwords |
-| `profiles` | id, user_id (unique), full_name, date_of_birth (optional), phone (optional), updated_at | personal details, apart from login data |
+| `users` | id, email (empty = phone-only account, migration 0008), **username** (unique, lowercase, empty for accounts made before 0008), password_hash, failed_attempts, is_locked, created_at | locked after 3 wrong passwords; CHECK email / username lowercase |
+| `profiles` | id, user_id (unique), full_name, date_of_birth (optional), phone (optional, `+230XXXXXXXX`, **unique**, can be used to log in), language, **occupation** (optional, 60), updated_at | personal details, apart from login data (migration 0008: occupation + unique phone) |
 | `otp_codes` | id, user_id, code_hash, expires_at, attempts, used, created_at | SHA-256 of the 6-digit code; 5 min; dies after 5 wrong guesses; created_at → 30 s resend wait |
 | `sessions` | token_hash (PK), user_id, expires_at | SHA-256 of the cookie value; 7 days |
 | `income` | id, user_id, name, source, amount_cents, frequency, date, created_at | `source` = Salary/Allowance/… (API field `type`) |
@@ -453,14 +509,21 @@ All money routes need you to be logged in (401 otherwise).
 
 | Method + address | What it does |
 |---|---|
-| POST `/api/auth/register` ✅ | create an account |
-| POST `/api/auth/login` ✅ | check the password → email a code (423 = locked) |
+| POST `/api/auth/register` ✅ | `{full_name, username, email?, phone?, password, confirm_password}` (email and/or phone) → create an account |
+| POST `/api/auth/login` ✅ | `{email: email OR phone, password}` → check the password → send a code: email, or WhatsApp for phone-only accounts (423 = locked; WhatsApp not set up → 503 `PHONE_CODE_NOT_AVAILABLE`; WhatsApp failed → 503 `WHATSAPP_FAILED`) |
 | POST `/api/auth/send-login-code` ✅ | locked account → email a code |
 | POST `/api/auth/resend-code` ✅ | "Resend OTP": new code for the same email (429 within 30 s of the last one) |
 | POST `/api/auth/verify-code` ✅ | check the code → log in (+ unlock) → set cookie (410 = code expired) |
-| GET `/api/auth/me` ✅ | who is logged in + saved `language` (null if never set) (401 if nobody) |
+| GET `/api/auth/me` ✅ | `{full_name, username, email, language}` of who is logged in (401 if nobody) |
 | PUT `/api/auth/language` ✅ | `{language: en/fr/mfe}` saved on `profiles.language` so it follows the user across devices; `app.js` applies it after `/me` and saves each switch (`saveMyLanguage` in api.js, silent on failure); login page stays localStorage-only |
-| POST `/api/auth/logout` ✅ | log out |
+| POST `/api/auth/logout` ✅ | log out (session deleted, cookie cleared) |
+| GET `/api/profile` ✅ | own `{full_name, username, email, phone, occupation}` — never the password hash |
+| PUT `/api/profile/name` ✅ | `{full_name}` |
+| PUT `/api/profile/username` ✅ | `{username}` (409 `USERNAME_TAKEN`) |
+| PUT `/api/profile/email` ✅ | `{email (empty = remove), current_password}` (400 `WRONG_PASSWORD`, 409 `EMAIL_IN_USE`, 400 `NEED_EMAIL_OR_PHONE`) |
+| PUT `/api/profile/phone` ✅ | `{phone (empty = remove), current_password}` (422 `INVALID_PHONE`, 409 `PHONE_TAKEN`, 400 `NEED_EMAIL_OR_PHONE`) |
+| PUT `/api/profile/occupation` ✅ | `{occupation}` (empty = remove) |
+| PUT `/api/profile/password` ✅ | `{current_password, new_password, confirm_password}` → `PASSWORD_CHANGED`; other sessions logged out |
 | GET `/api/summary?month=YYYY-MM` 🆕 | `info` (provided / none / missing) + income, spent, saved, left to spend, %s (each **null** when not given), category rows (spent / budget / over_by), fixed bills, last 3 expenses |
 | GET `/api/income?month=YYYY-MM` 🆕 | regular incomes + one-offs of that month |
 | POST `/api/income` 🆕 | add an income |
@@ -484,7 +547,7 @@ All money routes need you to be logged in (401 otherwise).
 | GET `/api/insights?month=YYYY-MM` ✅ | `{analysis (maths, no AI), saved {status none/fresh/outdated, insight, generated_at, model}, usage {used_today, daily_limit, cooldown_seconds_left}, ai_configured, paused_seconds}`. **Never calls Groq** |
 | POST `/api/insights/generate` ✅ | `{month?}` → same reply + `cached`. Calls Groq only if no valid saved analysis and within the limits (see "Financial insights"); 429 / 409 / 503 / 502 / 400 with codes `AI_*` |
 | POST `/api/voice/parse-expense` 🆕 | text → suggested `{amount, category, kind, note}` (not saved) |
-| GET `/api/dashboard?today=YYYY-MM-DD` ✅ | everything on the Dashboard: `balance, spending, savings, loans, recap, health, weekly, recent_weeks, jar, badges {earned, all, new}, info, is_new_user` (plain maths, never the AI) |
+| GET `/api/dashboard?today=YYYY-MM-DD` ✅ | everything on the Dashboard (+ the Profile's weekly budget / badges): `balance, spending, savings, loans, recap, health, weekly, recent_weeks, jar {available, goals, overall_percent}, badges {earned, all, new}, info, is_new_user` (plain maths, never the AI) |
 | PUT `/api/dashboard/weekly-budget` ✅ | `{amount (empty = remove), today}` → same reply as GET |
 | GET `/api/info-status?month=` ✅ | `{income, expenses, loans, savings}`: provided / none / missing |
 | PUT `/api/info-choices` ✅ | `{topic, month?, none}` → "I have none" (true) or undo (false); returns the 4 states |
@@ -506,8 +569,8 @@ Each step is checked before the next one starts. After each step: what was built
 1. **Backend:** tables, `categories.py`, `money.py`, all routes, pytest tests for the calculations.
 2. **Tab bar + Money out view + Add expense** (+ manifest, service worker, icons).
 3. **Money in view + Add income.**
-4. **Targets tab.**
-5. **Arcade tab.** ✅ Budget Challenge
+4. **Targets tab.** (now Money → Savings)
+5. **Arcade tab.** ✅ Budget Challenge (now on the Profile tab)
 6. **Voice input** (`voice.js`, `expense_parser.py`, `/api/voice/parse-expense`, `/api/speech-to-text`).
 
 ---
@@ -520,6 +583,17 @@ The app sends email through Gmail's normal mail server (SMTP) using an **App Pas
 2. Go to **myaccount.google.com/apppasswords** → create one (name it e.g. "Finance app") → copy the 16 letters.
 3. Put them in `backend/.env` as `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`.
 Gmail allows about 500 emails a day, which is plenty for a hackathon.
+
+### Login codes to phones — not built yet
+Phone-only accounts get their login code on **WhatsApp** through the **Twilio WhatsApp sandbox** (`backend/whatsapp_sender.py`, called only from `deliver_login_code()` in `routes/auth.py`; accounts with an email still get it by email).
+
+**Set it up (free trial, good for a demo — not for real users):**
+1. Create an account at twilio.com/try-twilio.
+2. Console → Messaging → Try it out → Send a WhatsApp message: note the **sandbox number** and your **join code**.
+3. On every phone that will log in, send `join <your-code>` to the sandbox number on WhatsApp (lasts 3 days, then send it again).
+4. `backend/.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (the sandbox number, e.g. `+14155238886`). Restart the server.
+- Limits: a trial includes a small number of free WhatsApp messages; only phones that joined the sandbox receive messages. Real users would need a paid Twilio account and an approved WhatsApp sender.
+- Without the keys, phone-only login answers 503 `PHONE_CODE_NOT_AVAILABLE`; tests always fake the sender (`sent_codes` fixture + `tests/backend/test_whatsapp_sender.py`), so they never call Twilio.
 
 ### OpenAI (speech-to-text backup only, in this task)
 | Feature | First choice (free, in the browser) | Backup (our backend calls it) | .env key |

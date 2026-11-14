@@ -118,7 +118,7 @@ def test_savings_contributions_and_goals(logged_in):
 def test_no_savings_goals(logged_in):
     add_income(logged_in)
     data = dashboard(logged_in)
-    assert data["jar"] == {"available": False, "goals": []}
+    assert data["jar"] == {"available": False, "goals": [], "overall_percent": None}
     assert data["savings"]["available"] is False and data["savings"]["reason"] == "NO_SAVINGS"
 
 
@@ -275,7 +275,9 @@ def test_several_goals_each_have_their_own_jar(logged_in):
     add_goal(logged_in, "Emergency Fund", 20000, saved=8000)
     add_goal(logged_in, "Phone", 5000, saved=5000)
     add_goal(logged_in, "Trip", 30000)
-    jars = {goal["name"]: goal for goal in dashboard(logged_in)["jar"]["goals"]}
+    jar = dashboard(logged_in)["jar"]
+    jars = {goal["name"]: goal for goal in jar["goals"]}
+    assert jar["overall_percent"] == 23.6  # (8,000 + 5,000) / 55,000 — the Dashboard tile "Savings · 24%"
     assert jars["Emergency Fund"]["percent"] == 40 and jars["Emergency Fund"]["remaining"] == 12000
     assert jars["Phone"]["percent"] == 100 and jars["Phone"]["status"] == "Done"
     assert jars["Trip"]["percent"] == 0 and jars["Trip"]["saved"] == 0

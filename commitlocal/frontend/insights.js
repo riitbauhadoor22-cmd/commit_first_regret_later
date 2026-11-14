@@ -2,7 +2,7 @@
 // Opening the tab only READS what's saved (GET /api/insights): the 50/30/20 check-up (plain maths, no AI)
 // and the last AI analysis. The AI (Groq, on our server) is only asked when the user taps the button,
 // and the server decides whether a new analysis is really needed. The button is disabled while it runs.
-// Uses STATUS_KEYS / STATUS_CLASSES from targets-tab.js (loaded before this file).
+// Uses STATUS_KEYS / STATUS_CLASSES from savings-view.js (loaded before this file).
 
 // ===== STATE =====
 let insightsData = null;   // last reply from the server

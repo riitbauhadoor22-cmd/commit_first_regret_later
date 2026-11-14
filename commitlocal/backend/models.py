@@ -1,9 +1,10 @@
 # models.py — (1) the shape of the data the frontend sends us (Pydantic forms; FastAPI rejects anything
 # that doesn't fit) and (2) the database tables (SQLAlchemy ORM, at the bottom of this file).
 import datetime
+import re
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator, model_validator
 
 from categories import CATEGORIES, GOAL_CPI_CATEGORIES, INCOME_TYPES
 
@@ -12,28 +13,116 @@ MAX_AMOUNT = 10_000_000
 
 # ===== LOGIN FORMS =====
 
+USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{3,30}$")  # 3–30 letters, digits, dot, underscore, hyphen
+PHONE_PATTERN = re.compile(r"^(\+230)?(5\d{7}|\d{7})$")       # Mauritius: mobile 5XXXXXXX or 7-digit landline
+
+
+def clean_username(value):
+    """Trimmed + lowercase username, or a ValueError (shown as INVALID_USERNAME)."""
+    text = str(value).strip()
+    if not USERNAME_PATTERN.match(text):
+        raise ValueError("A username has 3 to 30 letters, numbers, dots, underscores or hyphens.")
+    return text.lower()
+
+
+def clean_phone(value):
+    """Mauritius phone number → "+230XXXXXXXX" (spaces / dashes removed); empty → None. Else ValueError (INVALID_PHONE)."""
+    if value is None:
+        return None
+    text = re.sub(r"[\s-]", "", str(value))
+    if text == "":
+        return None
+    match = PHONE_PATTERN.match(text)
+    if not match:
+        raise ValueError("Please enter a Mauritius phone number, e.g. +230 5123 4567.")
+    return "+230" + match.group(2)
+
+
+EMAIL_CHECK = TypeAdapter(EmailStr)
+
+
+class CodedValueError(ValueError):
+    """A form problem with its own error code (errors.py sends `code` instead of a field-name code)."""
+
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+
+def clean_email(value):
+    """Optional email: empty → None, otherwise a valid email in lowercase (else ValueError = INVALID_EMAIL)."""
+    if value is None or str(value).strip() == "":
+        return None
+    try:
+        return str(EMAIL_CHECK.validate_python(str(value).strip())).lower()
+    except ValueError:  # pydantic's own error → a plain message (code INVALID_EMAIL from the field name)
+        raise ValueError("Please enter a valid email address.")
+
+
+def clean_login_id(value):
+    """Login with an email OR a phone number: "Asha@X.com" → "asha@x.com", "5123 4567" → "+23051234567"."""
+    text = str(value).strip()
+    if "@" in text:
+        return clean_email(text)
+    phone = clean_phone(text)
+    if phone is None:
+        raise ValueError("Please enter your email or phone number.")
+    return phone
+
+
 class RegisterForm(BaseModel):
     full_name: str = Field(min_length=1, max_length=100)
-    email: EmailStr
+    username: str = Field(max_length=60)
+    email: Optional[str] = Field(default=None, max_length=254)  # email OR phone (or both) is required
+    phone: Optional[str] = Field(default=None, max_length=30)   # Mauritius format, saved as +230XXXXXXXX
     password: str = Field(max_length=200)
     confirm_password: str = Field(max_length=200)
 
+    @field_validator("email")
+    @classmethod
+    def check_email(cls, value):
+        return clean_email(value)
 
-class LoginForm(BaseModel):
-    email: EmailStr
+    @model_validator(mode="after")
+    def need_email_or_phone(self):
+        if self.email is None and self.phone is None:
+            raise CodedValueError("EMAIL_OR_PHONE_REQUIRED", "Please enter an email or a phone number (or both).")
+        return self
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, value):
+        return clean_username(value)
+
+    @field_validator("phone")
+    @classmethod
+    def check_phone(cls, value):
+        return clean_phone(value)
+
+
+# "email" in the 3 login forms = the user's email OR phone number (the field keeps its old name, so old clients work)
+class LoginIdForm(BaseModel):
+    email: str = Field(max_length=254)
+
+    @field_validator("email")
+    @classmethod
+    def check_login_id(cls, value):
+        return clean_login_id(value)
+
+
+class LoginForm(LoginIdForm):
     password: str = Field(max_length=200)
 
 
-class EmailForm(BaseModel):
-    email: EmailStr
+class EmailForm(LoginIdForm):
+    pass
 
 
 class LanguageForm(BaseModel):
     language: Literal["en", "fr", "mfe"]
 
 
-class CodeForm(BaseModel):
-    email: EmailStr
+class CodeForm(LoginIdForm):
     code: str = Field(pattern=r"^\d{6}$")  # exactly 6 digits
 
 
@@ -190,6 +279,50 @@ class MyLoanForm(BaseModel):
     start_date: Optional[datetime.date] = None
 
 
+# ===== PROFILE TAB (own account only; the user always comes from the session cookie) =====
+class NameForm(BaseModel):
+    full_name: str = Field(min_length=1, max_length=100)
+
+
+class UsernameForm(BaseModel):
+    username: str = Field(max_length=60)
+
+    @field_validator("username")
+    @classmethod
+    def check_username(cls, value):
+        return clean_username(value)
+
+
+class ChangeEmailForm(BaseModel):
+    email: Optional[str] = Field(default=None, max_length=254)  # empty = remove (only if a phone number is left)
+    current_password: str = Field(max_length=200)  # needed to change the email (security)
+
+    @field_validator("email")
+    @classmethod
+    def check_email(cls, value):
+        return clean_email(value)
+
+
+class OccupationForm(BaseModel):
+    occupation: Optional[str] = Field(default=None, max_length=60)  # empty = remove
+
+
+class PhoneForm(BaseModel):
+    phone: Optional[str] = Field(default=None, max_length=30)  # empty = remove (only if an email is left)
+    current_password: str = Field(max_length=200)  # the phone can be used to log in, so it needs the password
+
+    @field_validator("phone")
+    @classmethod
+    def check_phone(cls, value):
+        return clean_phone(value)
+
+
+class ChangePasswordForm(BaseModel):
+    current_password: str = Field(max_length=200)
+    new_password: str = Field(max_length=200)
+    confirm_password: str = Field(max_length=200)
+
+
 # ===== DASHBOARD =====
 class WeeklyBudgetForm(BaseModel):
     amount: Optional[float] = Field(default=None, gt=0, le=MAX_AMOUNT)  # empty = remove the weekly budget
@@ -257,12 +390,14 @@ class User(Base):
     """Login data only."""
     __tablename__ = "users"
     id = id_column()
-    email = mapped_column(sa.String(254), nullable=False, unique=True)   # always lowercase
+    email = mapped_column(sa.String(254), nullable=True, unique=True)    # always lowercase; empty = phone-only account
+    username = mapped_column(sa.String(30), nullable=True, unique=True)  # always lowercase; empty for old accounts
     password_hash = mapped_column(sa.String(100), nullable=False)        # bcrypt, never the real password
     failed_attempts = mapped_column(sa.Integer, nullable=False, default=0)
     is_locked = mapped_column(sa.Boolean, nullable=False, default=False)  # locked after 3 wrong passwords
     created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
     __table_args__ = (sa.CheckConstraint("email = lower(email)", name="email_lowercase"),
+                      sa.CheckConstraint("username IS NULL OR username = lower(username)", name="username_lowercase"),
                       *not_negative("failed_attempts"))
 
 
@@ -273,8 +408,9 @@ class Profile(Base):
     user_id = user_id_column(unique=True)  # one profile per user
     full_name = mapped_column(sa.String(100), nullable=False)
     date_of_birth = mapped_column(sa.Date, nullable=True)
-    phone = mapped_column(sa.String(20), nullable=True)
+    phone = mapped_column(sa.String(20), nullable=True, unique=True)  # "+230XXXXXXXX", unique; can be used to log in
     language = mapped_column(sa.String(3), nullable=True)  # en / fr / mfe, null = never chosen
+    occupation = mapped_column(sa.String(60), nullable=True)  # optional (Profile tab), null = not added
     updated_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     __table_args__ = (sa.CheckConstraint("language IS NULL OR language IN ('en', 'fr', 'mfe')",
                                          name="language_allowed"),)

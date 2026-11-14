@@ -1,8 +1,9 @@
-// login.js — runs login.html: tabs, the live password strength meter, and the calls to /api/auth/...
+// login.js — runs login.html: tabs, the live password strength meter, the Register checks (username, email and/or
+// phone) and the calls to /api/auth/... Login = email OR phone number + password, then a 6-digit code.
 // Texts come from i18n.js: t("key"). Backend replies carry a "code" that is translated here (see readMessage).
 
 // ===== STATE =====
-let currentEmail = ""; // remembered between the password step and the code step
+let currentEmail = ""; // email or phone, remembered between the password step and the code step
 let codeExpiresAt = 0;  // when the current code expires (ms, from Date.now())
 let resendReadyAt = 0;  // when "Resend OTP" can be tapped again (ms)
 let codeTimer = null;   // the 1-second countdown interval
@@ -15,6 +16,10 @@ const PASSWORD_RULES = [
   { id: "rule-number", test: (p) => /[0-9]/.test(p) },
   { id: "rule-symbol", test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
+
+// Same checks as clean_username() / clean_phone() in backend/models.py (the backend checks again)
+const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,30}$/;
+const PHONE_PATTERN = /^(\+230)?(5\d{7}|\d{7})$/; // Mauritius: mobile 5XXXXXXX or a 7-digit landline
 
 // Index = how many rules pass (0 to 5)
 const STRENGTH_LEVELS = [
@@ -179,8 +184,21 @@ function updateStrengthMeter() {
 }
 
 // ===== FORM ACTIONS =====
+// Quick checks of username / email / phone before sending (texts = the backend's error codes)
+function findRegisterProblem(username, email, phone) {
+  if (!USERNAME_PATTERN.test(username)) return t("error.INVALID_USERNAME");
+  if (!email && !phone) return t("error.EMAIL_OR_PHONE_REQUIRED");
+  if (phone && !PHONE_PATTERN.test(phone.replace(/[\s-]/g, ""))) return t("error.INVALID_PHONE");
+  return "";
+}
+
 async function registerUser(event) {
   event.preventDefault();
+  const username = byId("reg-username").value.trim();
+  const email = byId("reg-email").value.trim();
+  const phone = byId("reg-phone").value.trim();
+  const problem = findRegisterProblem(username, email, phone);
+  if (problem) return showMessage(problem, true);
   const password = byId("reg-password").value;
   if (countPassedRules(password) < PASSWORD_RULES.length) {
     return showMessage(t("login.rulesNotMet"), true);
@@ -192,14 +210,17 @@ async function registerUser(event) {
   button.disabled = true;
   const result = await postJson("/api/auth/register", {
     full_name: byId("reg-name").value,
-    email: byId("reg-email").value,
+    username: username,
+    email: email || null, // empty = not given (a phone number is enough)
+    phone: phone || null,
     password: password,
     confirm_password: byId("reg-confirm").value,
   });
   button.disabled = false;
   if (!result.ok) return showMessage(result.message, true);
 
-  byId("login-email").value = byId("reg-email").value.trim();
+  byId("login-email").value = email || phone; // log in with what they gave
+
   byId("register-form").reset();
   updateStrengthMeter();
   openTab("login");

@@ -1,5 +1,6 @@
 # conftest.py — shared pytest setup: a fresh temporary database per test, fake email sending, and login helpers.
 import os
+import re
 import sys
 from datetime import timedelta
 from pathlib import Path
@@ -48,6 +49,7 @@ def sent_codes(monkeypatch):
     import routes.auth
     codes = []
     monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.append(code))
+    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: codes.append(code))  # WhatsApp too
     return codes
 
 
@@ -79,8 +81,13 @@ def fake_groq(monkeypatch):
 
 
 # ===== HELPERS =====
+def username_for(email):
+    """A unique, valid username for each test email (usernames must be unique): "asha@example.com" → "asha_example.com"."""
+    return re.sub(r"[^a-z0-9._-]", "_", email.lower())[:30]
+
+
 def register(client, email="asha@example.com"):
-    res = client.post("/api/auth/register", json={"full_name": "Asha", "email": email,
+    res = client.post("/api/auth/register", json={"full_name": "Asha", "username": username_for(email), "email": email,
                                                   "password": PASSWORD, "confirm_password": PASSWORD})
     assert res.status_code == 201
 

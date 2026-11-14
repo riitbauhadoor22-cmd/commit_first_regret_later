@@ -1,6 +1,7 @@
 // app.js — runs the app page: checks you're logged in, switches tabs, opens and closes the pop-up
 // screens, shows short messages ("toasts"), formats money and dates, and turns on offline mode.
-// Tabs: Money, Targets, Loans, Arcade. Pop-ups close only on Cancel/Close, after a save, or a tap on the dark area.
+// Tabs: Money, Dashboard, Loans, Profile (the Dashboard opens first). Pop-ups close only on Cancel/Close, after a save,
+// a tap on the dark area or Esc; focus goes back to the button that opened them. Every "Log out" asks first.
 
 // ===== SMALL HELPERS =====
 function byId(id) {
@@ -67,7 +68,12 @@ function addMonths(monthText, count) {
   return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
 }
 
-// ===== OPTIONAL INFORMATION PROMPTS (used by the Money, Targets and Loans tabs) =====
+// The phone asks for less movement (Settings → Accessibility): no wave, no coin drop, no sliding
+function prefersLessMotion() {
+  return Boolean(window.matchMedia) && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+// ===== OPTIONAL INFORMATION PROMPTS (used by the Money, Savings and Loans views) =====
 // Missing → "Add your income…" + [Add] + [No income this month]. "none" → "Marked: …" + [Undo]. Provided → nothing.
 // texts = { ask, add, none, marked } translation keys; onAdd = opens the right form (or null); reload redraws the tab.
 function makeInfoPrompt(topic, state, texts, month, onAdd, reload) {
@@ -122,16 +128,23 @@ function showFormError(elementId, text) {
 }
 
 // ===== POP-UP SCREENS ("sheets") =====
+const sheetOpeners = {}; // sheet id → the button that opened it (focus goes back there on close)
+
 function openSheet(id) {
+  sheetOpeners[id] = document.activeElement;
   byId(id).hidden = false;
   document.body.style.overflow = "hidden"; // stop the page behind from scrolling
 }
 
 function closeSheet(id) {
+  if (byId(id).hidden) return;
   byId(id).hidden = true;
   if (!document.querySelector(".sheet:not([hidden])")) {
     document.body.style.overflow = "";
   }
+  const opener = sheetOpeners[id];
+  if (opener && opener.isConnected && typeof opener.focus === "function") opener.focus();
+  sheetOpeners[id] = null;
 }
 
 function setUpSheets() {
@@ -158,7 +171,7 @@ function setUpSheets() {
 }
 
 // ===== TABS =====
-const PAGES = ["dashboard", "money", "targets", "loans", "arcade"];
+const PAGES = ["money", "dashboard", "loans", "profile"];
 
 function openPage(name) {
   PAGES.forEach((page) => {
@@ -172,15 +185,17 @@ function openPage(name) {
   });
   window.scrollTo(0, 0);
 
-  // Fresh numbers every time a tab is opened (adding money in Targets changes Money's "Saved", and so on)
+  // Fresh numbers every time a tab is opened (adding money to a goal changes the Dashboard jar, and so on)
   if (name === "dashboard") loadDashboard(); // in dashboard.js
-  if (name === "money") loadMoneyTab();     // in money-tab.js
-  if (name === "targets") loadTargetsTab(); // in targets-tab.js
+  if (name === "money") {
+    loadMoneyTab(); // in money-tab.js
+    if (moneyView === "savings") loadSavingsView(); // in savings-view.js
+  }
   if (name === "loans") {
     prefillLoanFromMoney(); // in loans-tab.js
     loadMyLoans();
   }
-  if (name === "arcade") loadArcadeTab(); // in arcade-tab.js
+  if (name === "profile") loadProfileTab(); // in profile-tab.js
 }
 
 function setUpTabs() {
@@ -204,7 +219,18 @@ async function checkLogin() {
   }
 }
 
+// Every "Log out" button first asks "Log out?" (Cancel is focused, so a slip of the finger does nothing)
+function askToLogOut() {
+  openSheet("sheet-logout");
+  byId("logout-cancel").focus();
+}
+
+// "Log out" in the pop-up: the server ends the session and clears the cookie, then the login page opens
 async function logOutAndLeave() {
+  const button = byId("logout-confirm");
+  button.disabled = true;
+  byId("logout-cancel").disabled = true;
+  setText(button, "logout.busy");
   try {
     await logOut();
   } finally {
@@ -223,9 +249,8 @@ function redrawAfterLanguageChange() {
   const openName = PAGES.find((page) => !byId("page-" + page).hidden);
   if (openName === "dashboard") redrawDashboard(); // in dashboard.js
   if (openName === "money") redrawMoneyTab(); // in money-tab.js
-  if (openName === "targets") loadTargetsTab();
   if (openName === "loans") redrawLoans(); // in loans-tab.js
-  if (openName === "arcade") redrawArcade(); // in arcade-tab.js
+  if (openName === "profile") redrawProfile(); // in profile-tab.js
 }
 
 // ===== OFFLINE (service worker) =====
@@ -244,13 +269,15 @@ async function startApp() {
   setUpTabs();
   setUpSheets();
   document.querySelectorAll(".logout-btn").forEach((button) => {
-    button.addEventListener("click", logOutAndLeave);
+    button.addEventListener("click", askToLogOut);
   });
+  byId("logout-confirm").addEventListener("click", logOutAndLeave);
   registerServiceWorker();
   if (await checkLogin()) {
-    startMoneyTab();   // in money-tab.js
-    startTargetsTab(); // in targets-tab.js
-    startDashboard();  // in dashboard.js: the Dashboard is the first tab you see after logging in
+    startMoneyTab();    // in money-tab.js
+    startSavingsView(); // in savings-view.js (Money → Savings)
+    startProfileTab();  // in profile-tab.js
+    startDashboard();   // in dashboard.js: the Dashboard is the first page you see after logging in
   }
 }
 

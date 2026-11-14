@@ -1,44 +1,56 @@
-// jar-calc.test.js — tests for frontend/jar-calc.js (the savings jar's coins). Run: node --test tests/frontend/*.test.js
+// jar-calc.test.js — tests for frontend/jar-calc.js (the savings jar: liquid level, wave, coins, when to animate).
+// Run: node --test tests/frontend/*.test.js
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const J = require("../../frontend/jar-calc.js");
 
-test("the number of coins follows the saved percent", () => {
-  assert.equal(J.coinCount(0), 0);
-  assert.equal(J.coinCount(20), Math.round(0.2 * J.MAX_COINS));
-  assert.equal(J.coinCount(40), Math.round(0.4 * J.MAX_COINS));
-  assert.equal(J.coinCount(100), J.MAX_COINS);
-  assert.equal(J.coinCount(0.1), 1); // anything saved shows at least one coin
-});
-
-test("bad or out-of-range percents never give NaN or an overfull jar", () => {
-  for (const value of [undefined, null, "", "abc", NaN, -5]) assert.equal(J.coinCount(value), 0);
-  assert.equal(J.coinCount(250), J.MAX_COINS);
-  assert.equal(J.fillShare(250), 1);
+test("the liquid level follows the saved percent exactly", () => {
+  assert.equal(J.levelY(0), J.BOTTOM_Y);
+  assert.equal(J.levelY(100), J.TOP_Y);
+  assert.equal(J.levelY(50), (J.BOTTOM_Y + J.TOP_Y) / 2);
+  assert.ok(J.levelY(40) > J.levelY(60)); // more saved = higher surface (smaller y)
   assert.equal(J.fillShare(40), 0.4);
 });
 
-test("coins stack from the bottom up and the pile height matches the percent", () => {
-  const coins = J.layoutCoins(40);
-  const highestRow = Math.floor((coins.length - 1) / J.PER_ROW);
-  assert.equal(highestRow + 1, Math.ceil((0.4 * J.MAX_COINS) / J.PER_ROW)); // 2/5 of the rows
-  assert.ok(coins[0].y > coins[coins.length - 1].y); // first coin lowest (bigger y = lower in SVG)
-  for (const coin of coins) {
-    assert.ok(coin.x >= 45 && coin.x <= 155, "inside the jar walls");
-    assert.ok(coin.y >= J.TOP_Y - 3 && coin.y <= J.BOTTOM_Y + 3, "inside the jar height");
-    assert.ok(Math.abs(coin.rotate) <= 14);
+test("bad or out-of-range percents never give NaN or an overfull jar", () => {
+  for (const value of [undefined, null, "", "abc", NaN, -5]) {
+    assert.equal(J.levelY(value), J.BOTTOM_Y);
+    assert.equal(J.coinCount(value), 0);
+  }
+  assert.equal(J.levelY(250), J.TOP_Y);
+  assert.equal(J.fillShare(250), 1);
+});
+
+test("the wave path is valid, covers twice the jar width (for the loop) and stays subtle", () => {
+  const path = J.wavePath();
+  assert.ok(path.startsWith("M0 0") && path.endsWith("V260 H0 Z"));
+  assert.ok(path.includes(" 400 0"), "reaches x = 400");
+  assert.ok(!path.includes("NaN"));
+  const heights = [...path.matchAll(/Q[\d.]+ (-?[\d.]+)/g)].map((m) => Math.abs(Number(m[1])));
+  assert.ok(heights.length > 0 && heights.every((h) => h <= 5), "wave is at most 5 units high");
+});
+
+test("a few decoration coins: none at 0%, one as soon as anything is saved, at most 6", () => {
+  assert.equal(J.coinCount(0), 0);
+  assert.equal(J.coinCount(0.1), 1);
+  assert.equal(J.coinCount(40), 3);
+  assert.equal(J.coinCount(100), J.MAX_COINS);
+  for (const coin of J.layoutCoins(100)) {
+    assert.ok(coin.x >= 40 && coin.x <= 160, "inside the jar walls");
+    assert.ok(coin.y <= J.BOTTOM_Y && coin.y >= J.TOP_Y, "inside the jar");
   }
 });
 
 test("positions are the same every time (no random jumping)", () => {
   assert.deepEqual(J.layoutCoins(65), J.layoutCoins(65));
-  assert.deepEqual(J.coinPosition(7), J.coinPosition(7));
+  assert.equal(J.wavePath(), J.wavePath());
 });
 
-test("only coins above the old count are new (they drop in)", () => {
-  const coins = J.layoutCoins(50, J.coinCount(30));
-  const fresh = coins.filter((coin) => coin.isNew);
-  assert.equal(fresh.length, J.coinCount(50) - J.coinCount(30));
-  assert.ok(fresh.every((coin) => coin.index >= J.coinCount(30)));
-  assert.equal(J.layoutCoins(50).filter((coin) => coin.isNew).length, 0); // no old count = no animation
+test("animate only when the saved amount went up since last time", () => {
+  assert.equal(J.shouldAnimate(null, 500), false);      // first time on this phone: no animation
+  assert.equal(J.shouldAnimate(undefined, 500), false);
+  assert.equal(J.shouldAnimate(300, 500), true);         // money added: rise + one coin
+  assert.equal(J.shouldAnimate(500, 500), false);        // nothing changed
+  assert.equal(J.shouldAnimate(800, 500), false);        // less money: just the new level
+  assert.equal(J.shouldAnimate("abc", 500), false);
 });

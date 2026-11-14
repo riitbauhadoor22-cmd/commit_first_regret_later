@@ -3,7 +3,7 @@
 from sqlalchemy import select
 
 import database
-from conftest import PASSWORD, age_codes, register
+from conftest import PASSWORD, age_codes, register, username_for
 from models import OtpCode, User
 
 EMAIL = "asha@example.com"
@@ -23,7 +23,8 @@ def test_valid_code_logs_in(client, sent_codes):
     register(client)
     start_login(client)
     assert verify(client, sent_codes[-1]).status_code == 200
-    assert client.get("/api/auth/me").json() == {"full_name": "Asha", "email": EMAIL, "language": None}
+    assert client.get("/api/auth/me").json() == {"full_name": "Asha", "username": username_for(EMAIL), "email": EMAIL,
+                                                 "language": None}
 
 
 def test_expired_code_is_refused(client, sent_codes):

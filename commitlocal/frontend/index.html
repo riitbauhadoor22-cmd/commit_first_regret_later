@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<!-- index.html — the app: 4 tab pages (Money, Targets, Loans, Arcade), the bottom tab bar,
-     and the pop-up screens (Add expense, Set budget, lists). The JS files fill in the numbers.
+<!-- index.html — the app: 4 tab pages (Money, Dashboard, Loans, Profile), the bottom tab bar,
+     and the pop-up screens (Add expense, Set budget, goals, password, log out, lists). The JS files fill in the numbers.
      Texts: data-i18n="key" / data-i18n-placeholder / data-i18n-aria → lang/*.json (i18n.js, loaded first). -->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title data-i18n="app.name">My Money</title>
-  <meta name="theme-color" content="#070d1f">
+  <meta name="theme-color" content="#101e49">
+  <script src="theme.js"></script> <!-- Brighter / Darker theme: set on <html> before the page is drawn -->
   <link rel="manifest" href="manifest.json">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -20,8 +21,7 @@
 </head>
 <body class="app">
 
-  <!-- ===================== TAB 1: MONEY ===================== -->
-  <!-- ===================== TAB 0: DASHBOARD (first tab after logging in) ===================== -->
+  <!-- ===================== DASHBOARD (2nd tab, the first page you see after logging in) ===================== -->
   <!-- Everything here comes from GET /api/dashboard (plain maths on the user's own records, never the AI) -->
   <main id="page-dashboard" class="page">
     <header class="page-head">
@@ -45,152 +45,173 @@
       </div>
     </section>
 
-    <!-- 1. Available this month -->
-    <section class="card dark" aria-labelledby="dash-balance-label">
-      <div class="card-head">
-        <p id="dash-balance-label" class="label" data-i18n="dash.balance.title">Available this month</p>
-        <span id="dash-balance-state" class="status dash-state" hidden></span>
-      </div>
-      <p id="dash-balance" class="big-number">…</p>
-      <p id="dash-balance-compare" class="muted"></p>
-      <p id="dash-put-aside" class="muted"></p>
-      <p class="muted small" data-i18n="dash.balance.how">Income − expenses − loan repayments − savings put aside this month.</p>
-      <button id="dash-details-btn" class="link-btn" type="button" style="align-self: flex-start;" data-i18n="dash.balance.details">See the details in Money</button>
-    </section>
-
-    <!-- 2. Financial health score -->
-    <section class="card stack" aria-labelledby="dash-score-title">
-      <h2 id="dash-score-title" data-i18n="dash.health.title">Money habits score</h2>
-      <div class="score-top">
-        <div id="dash-score-ring" class="score-ring"><span id="dash-score">—</span></div>
-        <div>
-          <p id="dash-score-level" class="item-name"></p>
-          <p id="dash-score-why" class="muted"></p>
+    <!-- 2-column grid of blocks: each starts as a small tile (icon + title + one number); tap = open it full width.
+         Only one is open at a time (dashboard.js: toggleBlock). Weekly budget + badges moved to the Profile tab. -->
+    <div id="dash-grid" class="dash-grid">
+      <section id="block-balance" class="card dash-block dark" data-block="balance">
+        <button id="block-balance-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-balance-body">
+          <span class="tile-icon" aria-hidden="true">🏦</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.balance">Available</span><span id="tile-balance" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-balance-body" class="dash-block-body" role="region" aria-labelledby="block-balance-btn">
+          <div class="dash-block-inner">
+          <div class="card-head">
+            <p id="dash-balance-label" class="label" data-i18n="dash.balance.title">Available this month</p>
+            <span id="dash-balance-state" class="status dash-state" hidden></span>
+          </div>
+          <p id="dash-balance" class="big-number">…</p>
+          <p id="dash-balance-compare" class="muted"></p>
+          <p id="dash-put-aside" class="muted"></p>
+          <p class="muted small" data-i18n="dash.balance.how">Income − expenses − loan repayments − savings put aside this month.</p>
+          <button id="dash-details-btn" class="link-btn" type="button" style="align-self: flex-start;" data-i18n="dash.balance.details">See the details in Money</button>
+          </div>
         </div>
-      </div>
-      <p id="dash-score-tip" class="tip-line"></p>
-      <ul id="dash-score-parts" class="score-parts"></ul>
-      <p class="muted small" data-i18n="dash.health.disclaimer">A guide to your habits from what you've recorded, out of 100. It is not a credit score and says nothing about your worth.</p>
-    </section>
-
-    <!-- 3. Spending per month -->
-    <section class="card stack" aria-labelledby="dash-spend-title">
-      <div class="card-head">
-        <h2 id="dash-spend-title" data-i18n="dash.spend.title">Monthly spending</h2>
-        <div id="dash-spend-toggle" class="toggle small-toggle">
-          <button type="button" data-spend-view="total" class="active" aria-pressed="true" data-i18n="dash.spend.total">Total</button>
-          <button type="button" data-spend-view="category" aria-pressed="false" data-i18n="dash.spend.byCategory">By category</button>
+      </section>
+      <section id="block-score" class="card dash-block" data-block="score">
+        <button id="block-score-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-score-body">
+          <span class="tile-icon" aria-hidden="true">❤️</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.score">Score</span><span id="tile-score" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-score-body" class="dash-block-body" role="region" aria-labelledby="block-score-btn">
+          <div class="dash-block-inner">
+          <h3 id="dash-score-title" data-i18n="dash.health.title">Money habits score</h3>
+          <div class="score-top">
+            <div id="dash-score-ring" class="score-ring"><span id="dash-score">—</span></div>
+            <div>
+              <p id="dash-score-level" class="item-name"></p>
+              <p id="dash-score-why" class="muted"></p>
+            </div>
+          </div>
+          <p id="dash-score-tip" class="tip-line"></p>
+          <ul id="dash-score-parts" class="score-parts"></ul>
+          <p class="muted small" data-i18n="dash.health.disclaimer">A guide to your habits from what you've recorded, out of 100. It is not a credit score and says nothing about your worth.</p>
+          </div>
         </div>
-      </div>
-      <div id="dash-spend-empty" class="info-prompt" hidden>
-        <p data-i18n="money.prompt.expenses">Start recording your expenses to see your spending breakdown.</p>
-        <div class="info-actions"><button id="dash-spend-add" class="btn btn-small" type="button" data-i18n="money.addExpenseButton">+ Add expense</button></div>
-      </div>
-      <div id="dash-spend-body">
-        <p id="dash-spend-latest" class="muted"></p>
-        <div class="chart-box"><canvas id="dash-spend-chart" aria-label="Spending per month" data-i18n-aria="dash.spend.title"></canvas></div>
-      </div>
-      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
-    </section>
-
-    <!-- 4. Saving rate per month -->
-    <section class="card stack" aria-labelledby="dash-save-title">
-      <h2 id="dash-save-title" data-i18n="dash.save.title">Monthly saving rate</h2>
-      <div id="dash-save-empty" class="info-prompt" hidden>
-        <p id="dash-save-empty-text"></p>
-        <div class="info-actions"><button id="dash-save-add" class="btn btn-small" type="button" data-i18n="dash.save.go">Go to Targets</button></div>
-      </div>
-      <div id="dash-save-body">
-        <p id="dash-save-latest" class="muted"></p>
-        <div class="chart-box"><canvas id="dash-save-chart" aria-label="Saving rate per month" data-i18n-aria="dash.save.title"></canvas></div>
-        <p class="muted small" data-i18n="dash.save.how">Saving rate = money put into goals and the safety net ÷ take-home income. The dashed line is the 20% guide.</p>
-      </div>
-      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
-    </section>
-
-    <!-- 5. Loan repayment projection -->
-    <section class="card stack" aria-labelledby="dash-loan-title">
-      <h2 id="dash-loan-title" data-i18n="dash.loan.title">Loan repayment projection</h2>
-      <div id="dash-loan-empty" class="info-prompt" hidden>
-        <p id="dash-loan-empty-text"></p>
-        <div class="info-actions"><button id="dash-loan-add" class="btn btn-small" type="button" data-i18n="dash.start.loan">+ Add a loan</button></div>
-      </div>
-      <div id="dash-loan-body" class="stack">
-        <select id="dash-loan-select" aria-label="Which loan" data-i18n-aria="dash.loan.which"></select>
-        <p id="dash-loan-outstanding" class="item-name"></p>
-        <p id="dash-loan-payoff" class="muted"></p>
-        <div class="chart-box"><canvas id="dash-loan-chart" aria-label="Projected loan balance" data-i18n-aria="dash.loan.projected"></canvas></div>
-        <p id="dash-loan-note" class="muted small"></p>
-      </div>
-      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
-    </section>
-
-    <!-- 6. Monthly recap -->
-    <section class="card dark stack" aria-labelledby="dash-recap-title">
-      <div class="card-head">
-        <h2 id="dash-recap-title" data-i18n="dash.recap.title">Monthly recap</h2>
-        <span id="dash-recap-month" class="muted"></span>
-      </div>
-      <dl class="recap-grid">
-        <div><dt data-i18n="money.in">In</dt><dd id="dash-recap-income" class="in"></dd></div>
-        <div><dt data-i18n="money.out">Out</dt><dd id="dash-recap-expenses" class="out"></dd></div>
-        <div><dt data-i18n="money.saved">Saved</dt><dd id="dash-recap-savings"></dd></div>
-        <div><dt data-i18n="dash.recap.loans">Loan repayments</dt><dd id="dash-recap-loans"></dd></div>
-        <div><dt data-i18n="dash.recap.left">Left</dt><dd id="dash-recap-left"></dd></div>
-        <div><dt data-i18n="dash.recap.top">Biggest category</dt><dd id="dash-recap-top"></dd></div>
-        <div class="wide"><dt data-i18n="dash.recap.progress">Monthly saving target</dt><dd id="dash-recap-progress"></dd></div>
-      </dl>
-      <ul id="dash-recap-text" class="insight-notes"></ul>
-    </section>
-
-    <!-- 7. Savings jar -->
-    <section class="card stack" aria-labelledby="dash-jar-title">
-      <h2 id="dash-jar-title" data-i18n="dash.jar.title">Savings jar</h2>
-      <div id="dash-jar-empty" class="info-prompt" hidden>
-        <p data-i18n="targets.noGoalsPrompt">Create a savings goal to start tracking your progress.</p>
-        <div class="info-actions"><button id="dash-jar-new" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button></div>
-      </div>
-      <div id="dash-jar-body" class="stack">
-        <div id="dash-jar-goals" class="chips"></div>
-        <div class="jar-layout">
-          <div id="dash-jar" class="jar-box"></div>
-          <dl class="jar-facts">
-            <div><dt data-i18n="dash.jar.goal">Goal</dt><dd id="dash-jar-name"></dd></div>
-            <div><dt data-i18n="dash.jar.saved">Saved</dt><dd id="dash-jar-saved"></dd></div>
-            <div><dt data-i18n="dash.jar.target">Target</dt><dd id="dash-jar-target"></dd></div>
-            <div><dt data-i18n="dash.jar.remaining">Remaining</dt><dd id="dash-jar-remaining"></dd></div>
-            <div><dt data-i18n="dash.jar.percent">Done</dt><dd id="dash-jar-percent"></dd></div>
+      </section>
+      <section id="block-spend" class="card dash-block" data-block="spend">
+        <button id="block-spend-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-spend-body">
+          <span class="tile-icon" aria-hidden="true">💸</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.spend">Spent</span><span id="tile-spend" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-spend-body" class="dash-block-body" role="region" aria-labelledby="block-spend-btn">
+          <div class="dash-block-inner">
+          <div class="card-head">
+            <h3 id="dash-spend-title" data-i18n="dash.spend.title">Monthly spending</h3>
+            <div id="dash-spend-toggle" class="toggle small-toggle">
+              <button type="button" data-spend-view="total" class="active" aria-pressed="true" data-i18n="dash.spend.total">Total</button>
+              <button type="button" data-spend-view="category" aria-pressed="false" data-i18n="dash.spend.byCategory">By category</button>
+            </div>
+          </div>
+          <div id="dash-spend-empty" class="info-prompt" hidden>
+            <p data-i18n="money.prompt.expenses">Start recording your expenses to see your spending breakdown.</p>
+            <div class="info-actions"><button id="dash-spend-add" class="btn btn-small" type="button" data-i18n="money.addExpenseButton">+ Add expense</button></div>
+          </div>
+          <div id="dash-spend-body">
+            <p id="dash-spend-latest" class="muted"></p>
+            <div class="chart-box"><canvas id="dash-spend-chart" aria-label="Spending per month" data-i18n-aria="dash.spend.title"></canvas></div>
+          </div>
+          <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+          </div>
+        </div>
+      </section>
+      <section id="block-save" class="card dash-block" data-block="save">
+        <button id="block-save-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-save-body">
+          <span class="tile-icon" aria-hidden="true">💰</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.save">Saving rate</span><span id="tile-save" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-save-body" class="dash-block-body" role="region" aria-labelledby="block-save-btn">
+          <div class="dash-block-inner">
+          <h3 id="dash-save-title" data-i18n="dash.save.title">Monthly saving rate</h3>
+          <div id="dash-save-empty" class="info-prompt" hidden>
+            <p id="dash-save-empty-text"></p>
+            <div class="info-actions"><button id="dash-save-add" class="btn btn-small" type="button" data-i18n="dash.save.go">Go to Savings</button></div>
+          </div>
+          <div id="dash-save-body">
+            <p id="dash-save-latest" class="muted"></p>
+            <div class="chart-box"><canvas id="dash-save-chart" aria-label="Saving rate per month" data-i18n-aria="dash.save.title"></canvas></div>
+            <p class="muted small" data-i18n="dash.save.how">Saving rate = money put into goals and the safety net ÷ take-home income. The dashed line is the 20% guide.</p>
+          </div>
+          <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+          </div>
+        </div>
+      </section>
+      <section id="block-jar" class="card dash-block" data-block="jar">
+        <button id="block-jar-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-jar-body">
+          <span class="tile-icon" aria-hidden="true">🫙</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.jar">Savings</span><span id="tile-jar" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-jar-body" class="dash-block-body" role="region" aria-labelledby="block-jar-btn">
+          <div class="dash-block-inner">
+        <div id="dash-jar-empty" class="info-prompt" hidden>
+          <p data-i18n="targets.noGoalsPrompt">Create a savings goal to start tracking your progress.</p>
+          <div class="info-actions"><button id="dash-jar-new" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button></div>
+        </div>
+        <div id="dash-jar-body" class="stack">
+          <!-- one jar per goal, swipe sideways (dashboard.js drawJarList) -->
+          <div id="dash-jar-list" class="jar-list"></div>
+          <p class="muted small" data-i18n="dash.jar.tapHint">Tap a jar to add money to that goal in Money → Savings.</p>
+        </div>
+          </div>
+        </div>
+      </section>
+      <section id="block-loans" class="card dash-block" data-block="loans">
+        <button id="block-loans-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-loans-body">
+          <span class="tile-icon" aria-hidden="true">📉</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.loans">Loans</span><span id="tile-loans" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-loans-body" class="dash-block-body" role="region" aria-labelledby="block-loans-btn">
+          <div class="dash-block-inner">
+          <h3 id="dash-loan-title" data-i18n="dash.loan.title">Loan repayment projection</h3>
+          <div id="dash-loan-empty" class="info-prompt" hidden>
+            <p id="dash-loan-empty-text"></p>
+            <div class="info-actions"><button id="dash-loan-add" class="btn btn-small" type="button" data-i18n="dash.start.loan">+ Add a loan</button></div>
+          </div>
+          <div id="dash-loan-body" class="stack">
+            <select id="dash-loan-select" aria-label="Which loan" data-i18n-aria="dash.loan.which"></select>
+            <p id="dash-loan-outstanding" class="item-name"></p>
+            <p id="dash-loan-payoff" class="muted"></p>
+            <div class="chart-box"><canvas id="dash-loan-chart" aria-label="Projected loan balance" data-i18n-aria="dash.loan.projected"></canvas></div>
+            <p id="dash-loan-note" class="muted small"></p>
+          </div>
+          <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+          </div>
+        </div>
+      </section>
+      <section id="block-recap" class="card dash-block dark" data-block="recap">
+        <button id="block-recap-btn" class="dash-tile" type="button" aria-expanded="false" aria-controls="block-recap-body">
+          <span class="tile-icon" aria-hidden="true">🧾</span>
+          <span class="tile-text"><span class="tile-title" data-i18n="dash.tile.recap">Recap</span><span id="tile-recap" class="tile-value">—</span></span>
+          <span class="tile-chevron" aria-hidden="true"></span>
+        </button>
+        <div id="block-recap-body" class="dash-block-body" role="region" aria-labelledby="block-recap-btn">
+          <div class="dash-block-inner">
+          <div class="card-head">
+            <h3 id="dash-recap-title" data-i18n="dash.recap.title">Monthly recap</h3>
+            <span id="dash-recap-month" class="muted"></span>
+          </div>
+          <dl class="recap-grid">
+            <div><dt data-i18n="money.in">In</dt><dd id="dash-recap-income" class="in"></dd></div>
+            <div><dt data-i18n="money.out">Out</dt><dd id="dash-recap-expenses" class="out"></dd></div>
+            <div><dt data-i18n="money.saved">Saved</dt><dd id="dash-recap-savings"></dd></div>
+            <div><dt data-i18n="dash.recap.loans">Loan repayments</dt><dd id="dash-recap-loans"></dd></div>
+            <div><dt data-i18n="dash.recap.left">Left</dt><dd id="dash-recap-left"></dd></div>
+            <div><dt data-i18n="dash.recap.top">Biggest category</dt><dd id="dash-recap-top"></dd></div>
+            <div class="wide"><dt data-i18n="dash.recap.progress">Monthly saving target</dt><dd id="dash-recap-progress"></dd></div>
           </dl>
+          <ul id="dash-recap-text" class="insight-notes"></ul>
+          </div>
         </div>
-        <p id="dash-jar-message" class="muted"></p>
-      </div>
-    </section>
-
-    <!-- 8. Weekly budget + badges -->
-    <section class="card stack" aria-labelledby="dash-week-title">
-      <h2 id="dash-week-title" data-i18n="dash.week.title">Weekly budget &amp; badges</h2>
-      <form id="dash-week-form" class="week-form" novalidate>
-        <label><span data-i18n="dash.week.label">My spending budget per week (Rs)</span>
-          <input id="dash-week-input" type="number" inputmode="decimal" min="1" step="any"></label>
-        <div class="info-actions">
-          <button class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
-          <button id="dash-week-remove" class="link-btn" type="button" data-i18n="dash.week.remove" hidden>Remove</button>
-        </div>
-        <p id="dash-week-error" class="message error" role="alert"></p>
-      </form>
-      <p id="dash-week-note" class="muted"></p>
-      <div id="dash-week-body" class="stack">
-        <div class="bar"><span id="dash-week-bar"></span></div>
-        <p id="dash-week-text" class="item-name"></p>
-        <p id="dash-week-days" class="muted small"></p>
-        <ul id="dash-week-history" class="insight-notes"></ul>
-      </div>
-      <p class="small-title" data-i18n="dash.badge.title">Badges</p>
-      <ul id="dash-badges" class="badge-list"></ul>
-      <p class="muted small" data-i18n="dash.week.rule">Weeks run Monday to Sunday. A week counts when you stayed within budget and recorded spending on at least 3 days (an empty week isn't proof). Badges you earn are kept.</p>
-    </section>
+      </section>
+    </div>
   </main>
 
+  <!-- ===================== MONEY (1st tab): Money in / Money out / Savings ===================== -->
   <main id="page-money" class="page" hidden>
     <header class="page-head">
       <h1 data-i18n="nav.money">Money</h1>
@@ -224,10 +245,11 @@
       <div id="money-prompts" class="stack"></div> <!-- only shown for information the user hasn't given -->
     </section>
 
-    <!-- Money in / Money out switch -->
-    <div class="switch" role="tablist" aria-label="Money in or out" data-i18n-aria="money.inOrOut">
-      <button id="switch-in" type="button" role="tab" aria-selected="false" data-i18n="money.moneyIn">Money in</button>
-      <button id="switch-out" class="active" type="button" role="tab" aria-selected="true" data-i18n="money.moneyOut">Money out</button>
+    <!-- Money in / Money out / Savings switch -->
+    <div class="switch three" role="tablist" aria-label="Money in, money out or savings" data-i18n-aria="money.inOrOut">
+      <button id="switch-in" type="button" role="tab" aria-selected="false" aria-controls="view-in" data-i18n="money.moneyIn">Money in</button>
+      <button id="switch-out" class="active" type="button" role="tab" aria-selected="true" aria-controls="view-out" data-i18n="money.moneyOut">Money out</button>
+      <button id="switch-savings" type="button" role="tab" aria-selected="false" aria-controls="view-savings" data-i18n="money.savingsTab">Savings</button>
     </div>
 
     <!-- MONEY OUT view -->
@@ -289,6 +311,52 @@
       <p class="tip" data-i18n="income.tip">💡 You only add regular income once. After that it's added every month.</p>
     </div>
 
+    <!-- SAVINGS view (was the Targets tab; savings-view.js): bank balance, monthly saving, safety net, goals -->
+    <div id="view-savings" class="stack" hidden>
+      <!-- Dark card: money in the bank, split into safety net + goals + free -->
+      <section class="card dark" aria-label="Saved in your bank" data-i18n-aria="targets.savedInBank">
+        <div class="card-head">
+          <p class="label" data-i18n="targets.savedInBank">Saved in your bank</p>
+          <button id="bank-edit-btn" class="link-btn on-dark" type="button" data-i18n="targets.update">Update</button>
+        </div>
+        <p id="bank-balance" class="big-number">…</p>
+        <div id="bank-bar" class="split-bar" aria-hidden="true"></div>
+        <p id="bank-legend" class="split-legend"></p>
+      </section>
+
+      <!-- Monthly saving target + this month's progress -->
+      <section class="card">
+        <div class="card-head">
+          <h2 data-i18n="targets.monthlySaving">Monthly saving</h2>
+          <button id="target-edit-btn" class="link-btn" type="button" data-i18n="targets.change">Change</button>
+        </div>
+        <p id="target-amount" class="mid-number"></p>
+        <p id="target-note" class="muted"></p>
+        <div class="bar"><span id="target-bar"></span></div>
+        <p id="target-progress" class="muted"></p>
+      </section>
+
+      <!-- Safety net -->
+      <section class="card">
+        <div class="card-head">
+          <h2 data-i18n="targets.safetyNet">Safety net</h2>
+          <button id="safety-add-btn" class="btn btn-small btn-light" type="button" data-i18n="targets.addMoneyButton">+ Add money</button>
+        </div>
+        <p id="safety-text" class="muted"></p>
+        <div class="bar"><span id="safety-bar"></span></div>
+        <p id="safety-percent" class="muted"></p>
+      </section>
+
+      <!-- Goals -->
+      <div class="card-head goals-head">
+        <h2 data-i18n="targets.goals">Goals</h2>
+        <button id="new-goal-btn" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button>
+      </div>
+      <p id="goals-warning" class="warning-box" role="alert" hidden></p>
+      <div id="savings-prompt"></div> <!-- "Create a savings goal…" / "I'm not saving right now" -->
+      <div id="goal-list" class="stack"></div>
+    </div>
+
     <!-- Financial insights: 50/30/20 check-up (plain maths) + saved AI analysis. Groq only on the button. -->
     <section id="insights-card" class="card stack" aria-labelledby="insights-title">
       <div class="card-head">
@@ -307,57 +375,6 @@
       <p id="insights-status" class="muted" role="status" aria-live="polite"></p>
       <p class="muted" data-i18n="insights.disclaimer">Educational guidance only, not financial advice. AI text is in English.</p>
     </section>
-  </main>
-
-  <!-- ===================== TAB 2: TARGETS ===================== -->
-  <main id="page-targets" class="page" hidden>
-    <header class="page-head">
-      <h1 data-i18n="nav.targets">Targets</h1>
-      <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
-    </header>
-
-    <!-- Dark card: money in the bank, split into safety net + goals + free -->
-    <section class="card dark" aria-label="Saved in your bank" data-i18n-aria="targets.savedInBank">
-      <div class="card-head">
-        <p class="label" data-i18n="targets.savedInBank">Saved in your bank</p>
-        <button id="bank-edit-btn" class="link-btn on-dark" type="button" data-i18n="targets.update">Update</button>
-      </div>
-      <p id="bank-balance" class="big-number">…</p>
-      <div id="bank-bar" class="split-bar" aria-hidden="true"></div>
-      <p id="bank-legend" class="split-legend"></p>
-    </section>
-
-    <!-- Monthly saving target + this month's progress -->
-    <section class="card">
-      <div class="card-head">
-        <h2 data-i18n="targets.monthlySaving">Monthly saving</h2>
-        <button id="target-edit-btn" class="link-btn" type="button" data-i18n="targets.change">Change</button>
-      </div>
-      <p id="target-amount" class="mid-number"></p>
-      <p id="target-note" class="muted"></p>
-      <div class="bar"><span id="target-bar"></span></div>
-      <p id="target-progress" class="muted"></p>
-    </section>
-
-    <!-- Safety net -->
-    <section class="card">
-      <div class="card-head">
-        <h2 data-i18n="targets.safetyNet">Safety net</h2>
-        <button id="safety-add-btn" class="btn btn-small btn-light" type="button" data-i18n="targets.addMoneyButton">+ Add money</button>
-      </div>
-      <p id="safety-text" class="muted"></p>
-      <div class="bar"><span id="safety-bar"></span></div>
-      <p id="safety-percent" class="muted"></p>
-    </section>
-
-    <!-- Goals -->
-    <div class="card-head goals-head">
-      <h2 data-i18n="targets.goals">Goals</h2>
-      <button id="new-goal-btn" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button>
-    </div>
-    <p id="goals-warning" class="warning-box" role="alert" hidden></p>
-    <div id="savings-prompt"></div> <!-- "Create a savings goal…" / "I'm not saving right now" -->
-    <div id="goal-list" class="stack"></div>
   </main>
 
   <!-- ===================== TAB 3: LOANS (all maths in loan-calc.js, page in loans-tab.js) ===================== -->
@@ -451,14 +468,167 @@
     <p class="muted small disclaimer" data-i18n="loan.disclaimer">Estimates only – not financial advice. Check with your bank.</p>
   </main>
 
-  <!-- ===================== TAB 4: ARCADE (Budget Challenge + coming soon) ===================== -->
-  <main id="page-arcade" class="page" hidden>
+  <!-- ===================== PROFILE (4th tab, was Arcade): account, weekly budget + badges, Budget Challenge, settings ===================== -->
+  <main id="page-profile" class="page" hidden>
     <header class="page-head">
-      <h1 data-i18n="nav.arcade">Arcade</h1>
+      <h1 data-i18n="nav.profile">Profile</h1>
       <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
     </header>
 
-    <!-- Budget Challenge (arcade-tab.js): pick a level -> allocate -> surprise event -> adjust once -> score + XP -->
+    <!-- a) My account (profile-tab.js, GET /api/profile). Values change only after the server says OK. -->
+    <section id="account-card" class="card stack" aria-labelledby="account-title">
+      <div class="account-top">
+        <span id="account-avatar" class="avatar" aria-hidden="true">🙂</span>
+        <div class="account-top-text">
+          <h2 id="account-title">…</h2>
+          <p id="account-handle" class="muted"></p>
+        </div>
+      </div>
+      <ul class="account-list">
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="profile.name">Name</span>
+              <span id="value-name" class="account-value">…</span>
+            </div>
+            <button id="edit-name" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-name" data-i18n="common.edit">Edit</button>
+          </div>
+          <form id="form-name" class="account-form" novalidate hidden>
+            <label><span data-i18n="profile.newName">Your name</span> <input id="input-name" type="text" autocomplete="name" maxlength="100"></label>
+            <p id="error-name" class="message error" role="alert"></p>
+            <div class="account-actions">
+              <button id="save-name" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
+            </div>
+          </form>
+        </li>
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="login.username">Username</span>
+              <span id="value-username" class="account-value">…</span>
+            </div>
+            <button id="edit-username" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-username" data-i18n="common.edit">Edit</button>
+          </div>
+          <form id="form-username" class="account-form" novalidate hidden>
+            <label><span data-i18n="login.username">Username</span> <input id="input-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30"></label>
+            <p class="muted small" data-i18n="login.usernameHint">3–30 letters, numbers, dots, underscores or hyphens.</p>
+            <p id="error-username" class="message error" role="alert"></p>
+            <div class="account-actions">
+              <button id="save-username" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
+            </div>
+          </form>
+        </li>
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="login.email">Email</span>
+              <span id="value-email" class="account-value">…</span>
+            </div>
+            <button id="edit-email" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-email" data-i18n="common.edit">Edit</button>
+          </div>
+          <form id="form-email" class="account-form" novalidate hidden>
+            <label><span data-i18n="profile.newEmail">New email (empty = remove)</span> <input id="input-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"></label>
+            <label><span data-i18n="profile.currentPassword">Current password</span>
+              <span class="password-wrap"><input id="input-email-password" type="password" autocomplete="current-password" maxlength="200">
+                <button class="password-toggle" type="button" data-show-for="input-email-password" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+            <p class="muted small" data-i18n="profile.emailNote">Your next login code goes to the new email, so logging in again confirms it.</p>
+            <p id="error-email" class="message error" role="alert"></p>
+            <div class="account-actions">
+              <button id="save-email" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
+            </div>
+          </form>
+        </li>
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="profile.phone">Phone number</span>
+              <span id="value-phone" class="account-value">…</span>
+            </div>
+            <button id="edit-phone" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-phone" data-i18n="common.edit">Edit</button>
+          </div>
+          <form id="form-phone" class="account-form" novalidate hidden>
+            <label><span data-i18n="profile.newPhone">Phone number (empty = remove)</span> <input id="input-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+230 5123 4567"></label>
+            <label><span data-i18n="profile.currentPassword">Current password</span>
+              <span class="password-wrap"><input id="input-phone-password" type="password" autocomplete="current-password" maxlength="200">
+                <button class="password-toggle" type="button" data-show-for="input-phone-password" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+            <p class="muted small" data-i18n="profile.phoneNote">Mauritius numbers only. You can log in with it; you always keep an email or a phone number.</p>
+            <p id="error-phone" class="message error" role="alert"></p>
+            <div class="account-actions">
+              <button id="save-phone" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
+            </div>
+          </form>
+        </li>
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="profile.occupation">Occupation</span>
+              <span id="value-occupation" class="account-value">…</span>
+            </div>
+            <button id="edit-occupation" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-occupation" data-i18n="common.edit">Edit</button>
+          </div>
+          <form id="form-occupation" class="account-form" novalidate hidden>
+            <label><span data-i18n="profile.occupation">Occupation</span> <input id="input-occupation" type="text" list="occupation-options" maxlength="60" autocomplete="organization-title"></label>
+            <datalist id="occupation-options"></datalist>
+            <p class="muted small" data-i18n="profile.occupationNote">Pick a suggestion or type your own. Leave it empty to remove it.</p>
+            <p id="error-occupation" class="message error" role="alert"></p>
+            <div class="account-actions">
+              <button id="save-occupation" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
+            </div>
+          </form>
+        </li>
+        <li class="account-row">
+          <div class="account-row-top">
+            <div class="account-row-text">
+              <span class="account-label" data-i18n="login.password">Password</span>
+              <span class="account-value" aria-label="Password hidden" data-i18n-aria="profile.passwordHidden">••••••••</span>
+            </div>
+            <button id="edit-password" class="btn btn-small btn-light account-edit" type="button" data-i18n="profile.changePassword">Change password</button>
+          </div>
+        </li>
+      </ul>
+      <p class="small-title" data-i18n="profile.sharedTitle">Money details you've shared</p>
+      <ul class="account-list">
+        <li class="account-row account-row-top">
+          <div class="account-row-text"><span class="account-label" data-i18n="money.moneyIn">Money in</span><span id="share-income" class="account-value"></span></div>
+          <button id="share-income-add" class="link-btn" type="button" data-i18n="profile.addIt" hidden>Add it</button>
+        </li>
+        <li class="account-row account-row-top">
+          <div class="account-row-text"><span class="account-label" data-i18n="nav.loans">Loans</span><span id="share-loans" class="account-value"></span></div>
+          <button id="share-loans-add" class="link-btn" type="button" data-i18n="profile.addIt" hidden>Add it</button>
+        </li>
+      </ul>
+    </section>
+
+    <!-- b) Weekly budget + badges (moved from the Dashboard; same GET /api/dashboard, badges are never removed) -->
+    <section class="card stack" aria-labelledby="dash-week-title">
+      <h2 id="dash-week-title" data-i18n="dash.week.title">Weekly budget &amp; badges</h2>
+      <form id="dash-week-form" class="week-form" novalidate>
+        <label><span data-i18n="dash.week.label">My spending budget per week (Rs)</span>
+          <input id="dash-week-input" type="number" inputmode="decimal" min="1" step="any"></label>
+        <div class="info-actions">
+          <button class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+          <button id="dash-week-remove" class="link-btn" type="button" data-i18n="dash.week.remove" hidden>Remove</button>
+        </div>
+        <p id="dash-week-error" class="message error" role="alert"></p>
+      </form>
+      <p id="dash-week-note" class="muted"></p>
+      <div id="dash-week-body" class="stack">
+        <div class="bar"><span id="dash-week-bar"></span></div>
+        <p id="dash-week-text" class="item-name"></p>
+        <p id="dash-week-days" class="muted small"></p>
+        <ul id="dash-week-history" class="insight-notes"></ul>
+      </div>
+      <p class="small-title" data-i18n="dash.badge.title">Badges</p>
+      <ul id="dash-badges" class="badge-list"></ul>
+      <p class="muted small" data-i18n="dash.week.rule">Weeks run Monday to Sunday. A week counts when you stayed within budget and recorded spending on at least 3 days (an empty week isn't proof). Badges you earn are kept.</p>
+    </section>
+
+    <!-- c) Budget Challenge (arcade-tab.js): pick a level -> allocate -> surprise event -> adjust once -> score + XP -->
     <section id="game-card" class="card dark">
       <p class="label" data-i18n="game.label">Game 1</p>
       <h2 class="arcade-title" data-i18n="game.title">Budget Challenge</h2>
@@ -513,38 +683,35 @@
       <ul id="game-history" class="item-list"></ul>
     </section>
 
-    <section class="card dark">
-      <p class="label" data-i18n="arcade.soon">Coming soon</p>
-      <h2 class="arcade-title" data-i18n="arcade.title">Games are on the way 🎮</h2>
-      <p class="arcade-text" data-i18n="arcade.text">Challenges and mini-games to help you hit your goals will live here.</p>
+    <!-- d) Settings: theme (theme.js), language, log out -->
+    <section class="card stack" aria-labelledby="settings-title">
+      <h2 id="settings-title" data-i18n="profile.settings">Settings</h2>
+      <fieldset>
+        <legend data-i18n="profile.theme">Theme</legend>
+        <div class="toggle">
+          <button id="theme-brighter" class="choice" type="button" aria-pressed="true" data-i18n="profile.themeBrighter">Brighter</button>
+          <button id="theme-darker" class="choice" type="button" aria-pressed="false" data-i18n="profile.themeDarker">Darker</button>
+        </div>
+      </fieldset>
+      <label><span data-i18n="lang.choose">Language</span>
+        <select class="lang-select settings-lang" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select></label>
+      <button class="btn btn-danger logout-btn" type="button" data-i18n="nav.logOut">Log out</button>
     </section>
-
-    <div class="game-grid">
-      <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":2}'>Game 2</div>
-      <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":3}'>Game 3</div>
-      <div class="placeholder game-box" data-i18n="arcade.game" data-i18n-params='{"n":4}'>Game 4</div>
-    </div>
   </main>
 
   <!-- ===================== BOTTOM TAB BAR ===================== -->
   <nav class="tabbar" aria-label="Tabs" data-i18n-aria="nav.tabs">
-    <button class="active" type="button" data-page="dashboard" aria-current="page">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
-        <rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>
-      </svg>
-      <span data-i18n="nav.home">Home</span>
-    </button>
     <button type="button" data-page="money">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
         <rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2M3 10h18"/>
       </svg>
       <span data-i18n="nav.money">Money</span>
     </button>
-    <button type="button" data-page="targets">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+    <button class="active" type="button" data-page="dashboard" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>
       </svg>
-      <span data-i18n="nav.targets">Targets</span>
+      <span data-i18n="nav.dashboard">Dashboard</span>
     </button>
     <button type="button" data-page="loans">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -552,11 +719,11 @@
       </svg>
       <span data-i18n="nav.loans">Loans</span>
     </button>
-    <button type="button" data-page="arcade">
+    <button type="button" data-page="profile">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-        <rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor"/><circle cx="18" cy="13.5" r="1" fill="currentColor"/>
+        <circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>
       </svg>
-      <span data-i18n="nav.arcade">Arcade</span>
+      <span data-i18n="nav.profile">Profile</span>
     </button>
   </nav>
 
@@ -704,7 +871,7 @@
         </label>
         <label><span data-i18n="goal.deadline">Deadline</span> <input id="goal-deadline" type="date" required></label>
         <label><span data-i18n="goal.category">What is it for?</span> <select id="goal-category"></select></label>
-        <!-- Live inflation estimate (filled by targets-tab.js when target, deadline and category are set) -->
+        <!-- Live inflation estimate (filled by savings-view.js when target, deadline and category are set) -->
         <div id="goal-inflation-preview" class="inflation-box" aria-live="polite" hidden></div>
         <fieldset>
           <legend data-i18n="goal.priority">Priority</legend>
@@ -833,6 +1000,50 @@
     </div>
   </div>
 
+  <!-- ===================== POP-UP: CHANGE PASSWORD (Profile) ===================== -->
+  <div id="sheet-password" class="sheet" role="dialog" aria-modal="true" aria-labelledby="password-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
+        <h2 id="password-title" data-i18n="profile.changePassword">Change password</h2>
+        <span></span>
+      </header>
+      <form id="password-form" novalidate>
+            <label><span data-i18n="profile.currentPassword">Current password</span>
+              <span class="password-wrap"><input id="pw-current" type="password" autocomplete="current-password" maxlength="200">
+                <button class="password-toggle" type="button" data-show-for="pw-current" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+            <label><span data-i18n="profile.newPassword">New password</span>
+              <span class="password-wrap"><input id="pw-new" type="password" autocomplete="new-password" maxlength="200">
+                <button class="password-toggle" type="button" data-show-for="pw-new" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+        <ul class="rules">
+          <li id="pw-rule-length" data-i18n="login.rule.length">At least 8 characters</li>
+          <li id="pw-rule-upper" data-i18n="login.rule.upper">A capital letter (A–Z)</li>
+          <li id="pw-rule-lower" data-i18n="login.rule.lower">A lowercase letter (a–z)</li>
+          <li id="pw-rule-number" data-i18n="login.rule.number">A number (0–9)</li>
+          <li id="pw-rule-symbol" data-i18n="login.rule.symbol">A symbol (like ! @ #)</li>
+        </ul>
+            <label><span data-i18n="profile.confirmNewPassword">Confirm new password</span>
+              <span class="password-wrap"><input id="pw-confirm" type="password" autocomplete="new-password" maxlength="200">
+                <button class="password-toggle" type="button" data-show-for="pw-confirm" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+        <p id="pw-error" class="message error" role="alert"></p>
+        <button id="pw-save" class="btn" type="submit" data-i18n="profile.changePassword">Change password</button>
+        <p class="muted small" data-i18n="profile.passwordNote">Other phones and computers will be logged out. This one stays logged in.</p>
+      </form>
+    </div>
+  </div>
+
+  <!-- ===================== POP-UP: LOG OUT? (every Log out button; Cancel is focused first) ===================== -->
+  <div id="sheet-logout" class="sheet sheet-center" role="alertdialog" aria-modal="true" aria-labelledby="logout-title" aria-describedby="logout-text" hidden>
+    <div class="sheet-box dialog-box">
+      <h2 id="logout-title" data-i18n="logout.title">Log out?</h2>
+      <p id="logout-text" class="muted" data-i18n="logout.text">Are you sure you want to log out? You'll need your password and a login code to sign back in.</p>
+      <div class="dialog-actions">
+        <button id="logout-cancel" class="btn btn-light" type="button" data-close data-i18n="common.cancel">Cancel</button>
+        <button id="logout-confirm" class="btn btn-danger" type="button" data-i18n="nav.logOut">Log out</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="i18n.js"></script> <!-- languages: must load before the other scripts -->
@@ -840,15 +1051,16 @@
   <script src="app.js"></script>
   <script src="budget-calc.js"></script>
   <script src="money-tab.js"></script>
-  <script src="targets-tab.js"></script>
-  <script src="insights.js"></script> <!-- needs STATUS_KEYS from targets-tab.js -->
+  <script src="savings-view.js"></script> <!-- Money → Savings (was the Targets tab) -->
+  <script src="insights.js"></script> <!-- needs STATUS_KEYS from savings-view.js -->
   <!-- Chart.js (pinned version) for the Loans graphs. Offline it just doesn't load and the graphs are hidden. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="loan-calc.js"></script>
   <script src="loans-tab.js"></script>
   <script src="game-calc.js"></script>
-  <script src="arcade-tab.js"></script>
+  <script src="arcade-tab.js"></script> <!-- Budget Challenge game (on the Profile tab) -->
   <script src="jar-calc.js"></script> <!-- coin positions for the savings jar -->
   <script src="dashboard.js"></script> <!-- needs drawLoanChart (loans-tab.js), JarCalc, STATUS_KEYS -->
+  <script src="profile-tab.js"></script> <!-- Profile: account, weekly budget + badges, settings -->
 </body>
 </html>

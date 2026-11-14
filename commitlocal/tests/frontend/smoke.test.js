@@ -30,20 +30,40 @@ function definedNames(code) {
 }
 
 // ===== SCRIPT ORDER =====
-test("index.html loads i18n first and each helper before the file that uses it", () => {  // order matters for plain scripts
+test("index.html loads theme.js, then i18n, then each helper before the file that uses it", () => {  // order matters
   const s = scriptsOf("index.html");
-  assert.equal(s[0], "i18n.js");
+  assert.equal(s[0], "theme.js"); // in <head>: the Brighter / Darker colours are set before the page is drawn
+  assert.equal(s[1], "i18n.js");
   const before = (a, b) => assert.ok(s.indexOf(a) >= 0 && s.indexOf(a) < s.indexOf(b), a + " must load before " + b);
   before("api.js", "app.js");
   before("app.js", "money-tab.js");
   before("budget-calc.js", "money-tab.js");
   before("loan-calc.js", "loans-tab.js");
+  before("savings-view.js", "insights.js"); // insights.js uses STATUS_KEYS
+  before("jar-calc.js", "dashboard.js");
+  before("dashboard.js", "profile-tab.js"); // profile-tab.js uses announceNewBadges
   const html = read("index.html");
   assert.ok(html.indexOf("chart.umd") < html.indexOf('src="loans-tab.js"'), "Chart.js must load before loans-tab.js");
 });
 
-test("login.html loads i18n.js before login.js", () => {  // login page order
-  assert.deepEqual(scriptsOf("login.html"), ["i18n.js", "login.js"]);
+test("login.html loads theme.js, i18n.js, then login.js", () => {  // login page order
+  assert.deepEqual(scriptsOf("login.html"), ["theme.js", "i18n.js", "login.js"]);
+});
+
+test("tab bar: Money, Dashboard, Loans, Profile — and no link to the removed Targets tab", () => {
+  const html = read("index.html");
+  const tabs = [...html.matchAll(/data-page="([a-z]+)"/g)].map((m) => m[1]);
+  assert.deepEqual(tabs, ["money", "dashboard", "loans", "profile"]);
+  assert.ok(!html.includes('id="page-targets"') && !html.includes('id="page-arcade"'));
+  for (const file of fs.readdirSync(FRONTEND).filter((f) => f.endsWith(".js"))) {
+    assert.ok(!/openPage\(\s*["'](targets|arcade)["']|goTo\(\s*["'](targets|arcade)["']/.test(read(file)), file);
+  }
+});
+
+test("every Log out button asks first (no confirm() for logging out)", () => {
+  const app = read("app.js");
+  assert.ok(/logout-btn[\s\S]{0,120}askToLogOut/.test(app));
+  assert.ok(read("index.html").includes('id="sheet-logout"'));
 });
 
 test("every script file used by the pages exists and is cached by the service worker", () => {  // offline needs them
