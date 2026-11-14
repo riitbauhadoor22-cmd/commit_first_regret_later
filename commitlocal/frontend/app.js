@@ -67,6 +67,41 @@ function addMonths(monthText, count) {
   return date.getFullYear() + "-" + String(date.getMonth() + 1).padStart(2, "0");
 }
 
+// ===== OPTIONAL INFORMATION PROMPTS (used by the Money, Targets and Loans tabs) =====
+// Missing → "Add your income…" + [Add] + [No income this month]. "none" → "Marked: …" + [Undo]. Provided → nothing.
+// texts = { ask, add, none, marked } translation keys; onAdd = opens the right form (or null); reload redraws the tab.
+function makeInfoPrompt(topic, state, texts, month, onAdd, reload) {
+  if (state === "provided") return null;
+  const box = makeElement("div", "info-prompt");
+  const actions = makeElement("div", "info-actions");
+  if (state === "missing") {
+    box.append(makeElement("p", "", t(texts.ask)));
+    if (onAdd) actions.append(makeButton(t(texts.add), "btn btn-small", onAdd));
+    actions.append(makeButton(t(texts.none), "link-btn", () => chooseNone(topic, month, true, reload)));
+  } else {
+    box.append(makeElement("p", "muted", t(texts.marked)));
+    actions.append(makeButton(t("common.undo"), "link-btn", () => chooseNone(topic, month, false, reload)));
+  }
+  box.append(actions);
+  return box;
+}
+
+function makeButton(text, className, onClick) {
+  const button = makeElement("button", className, text);
+  button.type = "button";
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+async function chooseNone(topic, month, none, reload) {
+  try {
+    await setInfoChoice(topic, month, none);
+    await reload();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
 // ===== TOAST (short message at the bottom) =====
 let toastTimer = null;
 
@@ -123,7 +158,7 @@ function setUpSheets() {
 }
 
 // ===== TABS =====
-const PAGES = ["money", "targets", "loans", "arcade"];
+const PAGES = ["dashboard", "money", "targets", "loans", "arcade"];
 
 function openPage(name) {
   PAGES.forEach((page) => {
@@ -138,9 +173,13 @@ function openPage(name) {
   window.scrollTo(0, 0);
 
   // Fresh numbers every time a tab is opened (adding money in Targets changes Money's "Saved", and so on)
+  if (name === "dashboard") loadDashboard(); // in dashboard.js
   if (name === "money") loadMoneyTab();     // in money-tab.js
   if (name === "targets") loadTargetsTab(); // in targets-tab.js
-  if (name === "loans") prefillLoanFromMoney(); // in loans-tab.js
+  if (name === "loans") {
+    prefillLoanFromMoney(); // in loans-tab.js
+    loadMyLoans();
+  }
   if (name === "arcade") loadArcadeTab(); // in arcade-tab.js
 }
 
@@ -154,6 +193,7 @@ function setUpTabs() {
 async function checkLogin() {
   try {
     const me = await getMe(); // goes to login.html by itself if not logged in
+    currentUserName = me.full_name || ""; // for the Dashboard welcome (dashboard.js)
     // The account's saved language wins over this browser's, so the choice follows the user to other devices
     if (me.language && me.language !== I18n.getLanguage()) await setLanguage(me.language);
     window.addEventListener("i18n:change", saveLanguageToAccount); // only after the server's choice is applied
@@ -181,6 +221,7 @@ function saveLanguageToAccount(event) {
 // Static texts are re-translated by i18n.js; here we redraw the open tab so JS-made lists, dates and graphs follow
 function redrawAfterLanguageChange() {
   const openName = PAGES.find((page) => !byId("page-" + page).hidden);
+  if (openName === "dashboard") redrawDashboard(); // in dashboard.js
   if (openName === "money") redrawMoneyTab(); // in money-tab.js
   if (openName === "targets") loadTargetsTab();
   if (openName === "loans") redrawLoans(); // in loans-tab.js
@@ -209,6 +250,7 @@ async function startApp() {
   if (await checkLogin()) {
     startMoneyTab();   // in money-tab.js
     startTargetsTab(); // in targets-tab.js
+    startDashboard();  // in dashboard.js: the Dashboard is the first tab you see after logging in
   }
 }
 

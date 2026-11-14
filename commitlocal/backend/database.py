@@ -89,11 +89,24 @@ def find_user_row(db, table, row_id, user_id):
     return db.scalar(select(table).where(table.id == row_id, table.user_id == user_id))
 
 
-def get_savings_row(db, user_id):
-    """The user's savings settings row; makes an empty one the first time."""
-    row = db.scalar(select(SavingsSettings).where(SavingsSettings.user_id == user_id))
+def find_savings_row(db, user_id):
+    """The user's savings settings row, or None. Reading NEVER creates one (no made-up Rs 0 records)."""
+    return db.scalar(select(SavingsSettings).where(SavingsSettings.user_id == user_id))
+
+
+def read_savings_values(db, user_id):
+    """Savings settings as a dict. No row yet → bank balance and target are None (= not added), not 0."""
+    row = find_savings_row(db, user_id)
     if row is None:
-        row = SavingsSettings(user_id=user_id, bank_balance_cents=0, safety_net_saved_cents=0)
+        return {"user_id": str(user_id), "bank_balance": None, "monthly_target": None, "safety_net_saved": 0}
+    return row.to_dict()
+
+
+def get_savings_row(db, user_id):
+    """The user's savings settings row for SAVING something; makes one (bank balance empty) the first time."""
+    row = find_savings_row(db, user_id)
+    if row is None:
+        row = SavingsSettings(user_id=user_id, bank_balance_cents=None, safety_net_saved_cents=0)
         db.add(row)
         db.flush()  # write it now so later queries in this session can see it
     return row

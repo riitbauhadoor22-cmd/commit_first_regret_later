@@ -1,5 +1,6 @@
 // loans-tab.js — draws the Loans tab: "My current loan" repayment calculator and "Can I afford a loan?".
 // All the maths lives in loan-calc.js (window.LoanCalc). Section 2 also asks the backend's AI model (POST /api/loans/predict).
+// Saving a loan is OPTIONAL (/api/my-loans): with no saved loan the tab asks for details instead of predicting anything.
 // Graphs use Chart.js from a CDN; when offline it isn't loaded, so the graphs are hidden instead.
 // Texts come from i18n.js: t("key"). A language switch calls redrawLoans() to redo the shown results.
 
@@ -9,6 +10,9 @@ const LOAN_MAX_RATE = 100;         // % a year
 const loanCharts = {};             // open Chart.js graphs by canvas id, so we can redraw them
 let existingWasAutoFilled = false; // true while "existing repayments" holds the value copied from section 1
 let lastAffordability = null;      // { answer, v } of the last "Can I afford" result, to redraw it in another language
+let myLoans = [];                  // saved loans from /api/my-loans
+let editingLoanId = null;          // the saved loan shown in the form (null = a new one)
+let lastRepayValues = null;        // numbers of the last good calculation: what "Save this loan" saves
 
 // ===== HELPERS =====
 // Reads all fields of a form. specs = [[inputId, options], ...] (options.label = a translation key).
@@ -91,7 +95,8 @@ function calculateRepayment(event) {
   const warning = byId("repay-warning");
 
   if (!plan.ok) {
-    // Show a warning instead of numbers
+    // Show a warning instead of numbers (and nothing to save)
+    lastRepayValues = null;
     byId("repay-numbers").hidden = true;
     warning.hidden = false;
     warning.textContent = plan.reason === "payment-too-low"
@@ -102,6 +107,8 @@ function calculateRepayment(event) {
   }
   warning.hidden = true;
   byId("repay-numbers").hidden = false;
+  lastRepayValues = v;
+  setText(byId("repay-save"), editingLoanId ? "loan.saveUpdate" : "loan.save");
 
   // Payoff date counts from the start date, or today if it's empty or already passed
   const typedStart = byId("repay-start").value ? new Date(byId("repay-start").value + "T00:00") : null;
@@ -157,6 +164,114 @@ function calculateRepayment(event) {
   }
 }
 
+// ===== SAVED LOANS (optional) =====
+async function loadMyLoans() {
+  try {
+    const [info, status] = await Promise.all([getMyLoans(), getInfoStatus(getThisMonthText())]);
+    myLoans = info.loans;
+    drawMyLoans(status.loans);
+    fillExistingRepayments(info.total_monthly_payment);
+    if (myLoans.length > 0 && byId("repay-balance").value === "") showSavedLoan(myLoans[0]);
+  } catch (error) {
+    // Offline or not logged in: both calculators still work with typed numbers
+  }
+}
+
+function drawMyLoans(state) {
+  const list = byId("my-loans-list");
+  list.replaceChildren();
+  byId("my-loans-title").hidden = myLoans.length === 0;
+  byId("repay-new").hidden = myLoans.length === 0;
+  myLoans.forEach((loan) => list.append(makeSavedLoanItem(loan)));
+  const box = byId("my-loans-prompt");
+  box.replaceChildren();
+  const texts = { ask: "loan.saved.empty", add: "", none: "loan.none", marked: "loan.marked" };
+  const prompt = makeInfoPrompt("loans", state, texts, "", null, loadMyLoans); // the form below is the "add"
+  if (prompt) box.append(prompt);
+}
+
+function makeSavedLoanItem(loan) {
+  const li = makeElement("li", "loan-item");
+  const show = makeElement("button", "item");
+  show.type = "button";
+  const left = makeElement("span");
+  left.append(makeElement("span", "item-name", loan.name || t("loan.unnamed")),
+    makeElement("span", "item-sub", t("loan.saved.line", { balance: LoanCalc.formatRupees(loan.balance),
+      payment: LoanCalc.formatRupees(loan.monthly_payment), rate: loan.annual_rate })));
+  show.append(left);
+  show.addEventListener("click", () => showSavedLoan(loan));
+  li.append(show, makeButton(t("loan.delete"), "link-btn", () => deleteSavedLoan(loan)));
+  return li;
+}
+
+// Puts a saved loan in the form and shows its repayment plan
+function showSavedLoan(loan) {
+  editingLoanId = loan.id;
+  byId("repay-name").value = loan.name;
+  byId("repay-balance").value = loan.balance;
+  byId("repay-rate").value = loan.annual_rate;
+  byId("repay-payment").value = loan.monthly_payment;
+  byId("repay-start").value = loan.start_date || "";
+  calculateRepayment({ preventDefault() {} });
+}
+
+function startNewLoan() {
+  editingLoanId = null;
+  ["repay-name", "repay-balance", "repay-rate", "repay-payment", "repay-extra", "repay-start"].forEach((id) => {
+    byId(id).value = "";
+  });
+  byId("repay-result").hidden = true;
+  lastRepayValues = null;
+  byId("repay-name").focus();
+}
+
+// Saves the numbers of the last calculation (same checks as Calculate, the backend checks again)
+async function saveCurrentLoan() {
+  if (!lastRepayValues) return;
+  const loan = {
+    name: byId("repay-name").value.trim(),
+    balance: lastRepayValues["repay-balance"],
+    annual_rate: lastRepayValues["repay-rate"],
+    monthly_payment: lastRepayValues["repay-payment"],
+    start_date: byId("repay-start").value || null,
+  };
+  const button = byId("repay-save");
+  button.disabled = true;
+  try {
+    const info = editingLoanId ? await editMyLoan(editingLoanId, loan) : await addMyLoan(loan);
+    if (!editingLoanId) editingLoanId = info.loans[info.loans.length - 1].id;
+    showToast(t("loan.savedToast"));
+    setText(button, "loan.saveUpdate");
+    await loadMyLoans();
+  } catch (error) {
+    byId("repay-msg").textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function deleteSavedLoan(loan) {
+  if (!confirm(t("loan.deleteConfirm"))) return;
+  try {
+    await deleteMyLoan(loan.id);
+    if (editingLoanId === loan.id) startNewLoan();
+    showToast(t("loan.deletedToast"));
+    await loadMyLoans();
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+// Section 2's "existing repayments" = the saved loans' total (unless the user typed their own number)
+function fillExistingRepayments(total) {
+  const existing = byId("afford-existing");
+  if (!(total > 0)) return;
+  if (existing.value === "" || existingWasAutoFilled) {
+    existing.value = total;
+    existingWasAutoFilled = true;
+  }
+}
+
 // ===== SECTION 2: HOW MUCH CAN I BORROW? (AI model on the backend) =====
 // Fills income and expenses from this month's Money tab (only empty boxes, or ones we filled before).
 async function prefillLoanFromMoney() {
@@ -169,9 +284,10 @@ async function prefillLoanFromMoney() {
   }
 }
 
+// amount null = the user hasn't given it on the Money tab: leave the box empty (never fill in 0)
 function fillIfFree(id, amount) {
   const input = byId(id);
-  if (!(amount > 0)) return;
+  if (amount === null || !(amount > 0)) return;
   if (input.value === "" || input.dataset.autoFilled === "yes") {
     input.value = Math.round(amount);
     input.dataset.autoFilled = "yes"; // cleared when the user types (see START)
@@ -287,6 +403,8 @@ function redrawLoans() {
 
 // ===== START =====
 byId("repay-form").addEventListener("submit", calculateRepayment);
+byId("repay-save").addEventListener("click", saveCurrentLoan);
+byId("repay-new").addEventListener("click", startNewLoan);
 byId("afford-form").addEventListener("submit", calculateAffordability);
 byId("afford-existing").addEventListener("input", () => (existingWasAutoFilled = false)); // user typed their own value
 ["afford-income", "afford-expenses"].forEach((id) => byId(id).addEventListener("input", () => delete byId(id).dataset.autoFilled));

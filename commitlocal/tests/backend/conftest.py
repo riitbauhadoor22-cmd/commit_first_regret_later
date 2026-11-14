@@ -10,6 +10,9 @@ BACKEND = Path(__file__).resolve().parents[2] / "backend"
 sys.path.insert(0, str(BACKEND))  # so "import main", "import database" find the backend files
 # Never touch the real database: anything opened before a test starts uses a throwaway in-memory one
 os.environ["DATABASE_URL"] = "sqlite://"
+# Groq: a fake key and fixed limits, set BEFORE backend/.env is read (real .env values never apply in tests)
+os.environ.update({"GROQ_API_KEY": "test-key", "GROQ_MODEL": "", "AI_DAILY_LIMIT": "5", "AI_COOLDOWN_SECONDS": "60",
+                   "AI_MAX_OUTPUT_TOKENS": "1000", "AI_MAX_INPUT_CHARS": "6000", "AI_TIMEOUT_SECONDS": "25"})
 
 import database  # noqa: E402
 import security  # noqa: E402
@@ -46,6 +49,33 @@ def sent_codes(monkeypatch):
     codes = []
     monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.append(code))
     return codes
+
+
+FAKE_AI_REPLY = ('{"overview": "Fictional overview.", "observations": ["Fictional observation."], '
+                 '"suggestions": [{"title": "Tip", "description": "Fictional tip.", "reason": "Fictional reason.", '
+                 '"priority": "medium"}], "savings_analysis": "Fictional savings note.", "encouragement": "Keep going!"}')
+
+
+@pytest.fixture(autouse=True)
+def fake_groq(monkeypatch):
+    """EVERY test: Groq is replaced by a fake that counts calls (no test can ever reach the real API).
+    Tests change fake_groq["reply"] (text, or an exception to raise) and read fake_groq["calls"]."""
+    from services import ai_insights
+    ai_insights.reset_guards()
+    state = {"calls": 0, "reply": FAKE_AI_REPLY, "delay": 0}
+
+    def fake_send(messages, settings):
+        import time
+        state["calls"] += 1
+        state["last_messages"] = messages
+        time.sleep(state["delay"])
+        if isinstance(state["reply"], Exception):
+            raise state["reply"]
+        return state["reply"]
+
+    monkeypatch.setattr(ai_insights, "send_to_groq", fake_send)
+    yield state
+    ai_insights.reset_guards()
 
 
 # ===== HELPERS =====

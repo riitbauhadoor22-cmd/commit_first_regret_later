@@ -92,7 +92,8 @@ let goalColours = {};
 
 // ===== 1. DARK CARD: SAVED IN YOUR BANK =====
 function drawBankCard(balance, parts) {
-  byId("bank-balance").textContent = formatMoney(balance);
+  // null = the user hasn't added a bank balance: say so, don't show Rs 0
+  byId("bank-balance").textContent = balance === null ? t("targets.notAdded") : formatMoney(balance);
   const bar = byId("bank-bar");
   const legend = byId("bank-legend");
   bar.replaceChildren();
@@ -119,13 +120,23 @@ function drawBankCard(balance, parts) {
       legend.append(item);
     }
   });
-  if (balance === 0) {
+  if (balance === null) {
+    legend.append(makeElement("span", "", t("targets.bankNotAdded")));
+  } else if (balance === 0) {
     legend.append(makeElement("span", "", t("targets.bankEmpty")));
   }
 }
 
 // ===== 2. MONTHLY SAVING =====
 function drawMonthlySaving(savings) {
+  if (savings.monthly_target === null) { // no own target and no regular income: no made-up target
+    byId("target-amount").textContent = "—";
+    byId("target-note").textContent = t("targets.noTargetNote");
+    byId("target-bar").style.width = "0%";
+    byId("target-progress").textContent = savings.saved_this_month > 0
+      ? t("targets.savedThisMonth", { amount: formatMoney(savings.saved_this_month) }) : "";
+    return;
+  }
   byId("target-amount").textContent = t("common.perMonth", { amount: formatMoney(savings.monthly_target) });
   byId("target-note").textContent = savings.monthly_target_custom === null
     ? t("targets.defaultNote")
@@ -161,17 +172,37 @@ function drawGoals(info) {
 
   const list = byId("goal-list");
   list.replaceChildren();
-  if (info.goals.length === 0) {
+  const prompted = drawSavingsPrompt(info.goals.length);
+  if (info.goals.length === 0 && !prompted) {
     const empty = makeElement("section", "card");
-    empty.append(makeElement("p", "empty", t("targets.noGoals")));
+    empty.append(makeElement("p", "empty", t("targets.noGoalsPrompt")));
     list.append(empty);
-    return;
   }
+  if (info.goals.length === 0) return;
   info.goals.forEach((goal) => list.append(makeGoalCard(goal)));
 }
 
-const STATUS_CLASSES = { "On track": "on-track", "Needs more": "needs-more", Done: "done" };
-const STATUS_KEYS = { "On track": "goal.onTrack", "Needs more": "goal.needsMore", Done: "goal.done" };
+// "I'm not saving right now" (or Undo) — only while there are no goals and no savings records.
+// Returns true when it drew something (then the plain "no goals" card isn't needed).
+function drawSavingsPrompt(goalCount) {
+  const box = byId("savings-prompt");
+  box.replaceChildren();
+  const state = savingsInfo ? savingsInfo.info : "provided";
+  if (goalCount > 0 || state === "provided") return false;
+  const texts = { ask: "targets.prompt.savings", add: "targets.newGoalButton", none: "targets.none.savings",
+    marked: "targets.marked.savings" };
+  const prompt = makeInfoPrompt("savings", state, texts, "", () => openGoalSheet(null), loadTargetsTab);
+  if (!prompt) return false;
+  const card = makeElement("section", "card");
+  card.append(prompt);
+  box.append(card);
+  return true;
+}
+
+// "No target" = no saving target is known yet, so we can't say if a goal is on track (no guess)
+const STATUS_CLASSES = { "On track": "on-track", "Needs more": "needs-more", Done: "done", "No target": "no-target" };
+const STATUS_KEYS = { "On track": "goal.onTrack", "Needs more": "goal.needsMore", Done: "goal.done",
+  "No target": "goal.noTarget" };
 const PRIORITY_KEYS = { 1: "goal.priorityHigh", 2: "goal.priorityMedium", 3: "goal.priorityLow" };
 
 function makeGoalCard(goal) {
@@ -235,7 +266,7 @@ function makeGoalCard(goal) {
 
 // ===== POP-UP: BANK BALANCE =====
 function openBankSheet() {
-  byId("bank-amount").value = savingsInfo ? savingsInfo.bank_balance : "";
+  byId("bank-amount").value = savingsInfo && savingsInfo.bank_balance !== null ? savingsInfo.bank_balance : "";
   byId("bank-error").textContent = "";
   openSheet("sheet-bank");
   byId("bank-amount").focus();
@@ -254,8 +285,11 @@ async function saveBankForm(event) {
 
 // ===== POP-UP: MONTHLY SAVING TARGET =====
 function openTargetSheet() {
-  byId("target-input").value = savingsInfo.monthly_target;
-  setText(byId("target-default-btn"), "targets.useDefaultAmount", { amount: formatMoney(savingsInfo.default_target) });
+  byId("target-input").value = savingsInfo.monthly_target === null ? "" : savingsInfo.monthly_target;
+  byId("target-default-btn").hidden = savingsInfo.default_target === null; // no income → no 20% default to offer
+  if (savingsInfo.default_target !== null) {
+    setText(byId("target-default-btn"), "targets.useDefaultAmount", { amount: formatMoney(savingsInfo.default_target) });
+  }
   byId("target-error").textContent = "";
   openSheet("sheet-target");
   byId("target-input").focus();

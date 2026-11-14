@@ -153,10 +153,14 @@ def get_saved_in_month(deposits, month):
 
 
 def get_monthly_target(custom_target, incomes, month):
-    """The user's own target if they set one, otherwise 20% of regular income."""
+    """The user's own target if they set one, otherwise 20% of regular income.
+    None = unknown (no own target and no regular income): never shown as a Rs 0 target."""
     if custom_target is not None:
         return to_money(custom_target)
-    return to_money(get_regular_income(incomes, month) * DEFAULT_SAVING_SHARE)
+    regular = get_regular_income(incomes, month)
+    if regular <= 0:
+        return None
+    return to_money(regular * DEFAULT_SAVING_SHARE)
 
 
 def get_safety_net(expenses, safety_net_saved, month):
@@ -174,7 +178,9 @@ def get_amount_to_add(amount, target, saved):
 
 def get_bank_bar(bank_balance, safety_net_saved, goals):
     """Splits the bank balance into: safety net, one part per goal, and 'Free' money.
-    Each part gets a percent of the bar's width."""
+    Each part gets a percent of the bar's width. bank_balance None (not added) → no 'Free' money is guessed."""
+    if bank_balance is None:
+        bank_balance = 0
     parts = [{"label": "Safety net", "amount": to_money(safety_net_saved), "goal_id": None}]
     for goal in goals:
         parts.append({"label": goal["name"], "amount": to_money(goal["saved_amount"]), "goal_id": goal["id"]})
@@ -208,13 +214,16 @@ def sort_goals_by_priority(goals):
 
 def get_goal_statuses(goals, monthly_target, today):
     """Hand out the monthly saving target to goals in priority order.
-    A goal that gets at least what it needs is 'On track'; otherwise 'Needs more'."""
+    A goal that gets at least what it needs is 'On track'; otherwise 'Needs more'.
+    No known target (None) → 'No target': we can't say if it's on track, so we don't guess."""
     money_left = monthly_target
     results = []
     for goal in sort_goals_by_priority(goals):
         needs = get_needs_per_month(goal, today)
         if needs == 0:
             status = "Done"
+        elif monthly_target is None:
+            status = "No target"
         else:
             given = min(needs, money_left)
             money_left -= given
@@ -231,7 +240,7 @@ def get_goal_statuses(goals, monthly_target, today):
 
 def get_goals_warning(total_needed, monthly_target):
     """A warning message when all goals together need more than the monthly saving target."""
-    if total_needed <= monthly_target:
+    if monthly_target is None or total_needed <= monthly_target:
         return None
     return (f"Your goals need Rs {format_rupees(total_needed)} a month, but you save "
             f"Rs {format_rupees(monthly_target)}. Push a date back or focus on one goal first.")
@@ -286,24 +295,41 @@ def get_quick_add(expenses, today):
 
 
 # ===== MONEY TAB SUMMARY =====
-def get_summary(incomes, expenses, deposits, budgets, month):
-    """Everything the Money tab's dark card and category rows need for one month."""
-    income = get_monthly_income(incomes, month)
-    spent = get_total_spent(expenses, month)
+def percent_or_none(part, whole):
+    """part ÷ whole × 100, or None when either is unknown or there's no income to divide by."""
+    if part is None or whole is None or whole <= 0:
+        return None
+    return get_percent(part, whole)
+
+
+def get_summary(incomes, expenses, deposits, budgets, month, info=None):
+    """Everything the Money tab's dark card and category rows need for one month.
+    info = {"income": state, "expenses": state, "savings": state} (see info_status.py). A "missing" topic gives
+    None instead of a number, so the screen asks for it instead of showing Rs 0. info None = everything known."""
+    info = info or {}
+    income_known = info.get("income", "provided") != "missing"
+    expenses_known = info.get("expenses", "provided") != "missing"
     saved = get_saved_in_month(deposits, month)
-    needs = get_total_by_kind(expenses, month, "need")
-    wants = get_total_by_kind(expenses, month, "want")
+    saved_known = saved > 0 or info.get("savings", "provided") != "missing"
+    income = get_monthly_income(incomes, month) if income_known else None
+    spent = get_total_spent(expenses, month) if expenses_known else None
+    needs = get_total_by_kind(expenses, month, "need") if expenses_known else None
+    wants = get_total_by_kind(expenses, month, "want") if expenses_known else None
     fixed = get_fixed_bills(expenses, month)
     recent = sorted(get_everyday_expenses(expenses, month), key=lambda e: (e["date"], e["created_at"]), reverse=True)
+    # Left to spend needs BOTH income and spending; recorded deposits are taken off (none recorded = nothing put away)
+    left = to_money(income - spent - saved) if income is not None and spent is not None else None
     return {
         "month": month,
+        "info": {"income": info.get("income", "provided"), "expenses": info.get("expenses", "provided"),
+                 "savings": info.get("savings", "provided")},
         "income": income,
         "spent": spent,
-        "saved": saved,
-        "left_to_spend": to_money(income - spent - saved),
-        "needs_percent": get_percent(needs, income),
-        "wants_percent": get_percent(wants, income),
-        "savings_percent": get_percent(saved, income),
+        "saved": saved if saved_known else None,
+        "left_to_spend": left,
+        "needs_percent": percent_or_none(needs, income),
+        "wants_percent": percent_or_none(wants, income),
+        "savings_percent": percent_or_none(saved if saved_known else None, income),
         "categories": get_category_spending(expenses, budgets, month),
         "fixed_bills": fixed,
         "fixed_total": get_total(fixed),

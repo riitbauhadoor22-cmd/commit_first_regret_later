@@ -30,6 +30,9 @@ FIELD_CODES = {
     "name": "INVALID_NAME", "full_name": "INVALID_NAME", "note": "INVALID_NOTE",
     "language": "INVALID_LANGUAGE", "target": "INVALID_AMOUNT", "current": "INVALID_AMOUNT",
     "level": "INVALID_LEVEL", "allocation": "INVALID_AMOUNT",  # Arcade game
+    "balance": "INVALID_AMOUNT", "monthly_payment": "INVALID_AMOUNT", "annual_rate": "INVALID_RATE",  # saved loans
+    "topic": "INVALID_INPUT", "none": "INVALID_INPUT",  # "I have none" choices
+    "today": "INVALID_DATE",  # dashboard: the phone's date
 }
 
 

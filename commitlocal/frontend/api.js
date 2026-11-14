@@ -78,6 +78,29 @@ function addIncome(income) { return callApi("POST", "/api/income", income); }
 function editIncome(id, income) { return callApi("PUT", "/api/income/" + id, income); }
 function deleteIncome(id) { return callApi("DELETE", "/api/income/" + id); }
 
+// ===== OPTIONAL INFORMATION ("I have none") + SAVED LOANS =====
+// Each topic is provided / none / missing. Missing is never shown as Rs 0.
+function getInfoStatus(month) { return callApi("GET", "/api/info-status?month=" + month); }
+// topic: income / expenses (per month) or loans / savings; none: true = "I have none", false = undo
+function setInfoChoice(topic, month, none) {
+  return callApi("PUT", "/api/info-choices", { topic: topic, month: month || null, none: none });
+}
+function getMyLoans() { return callApi("GET", "/api/my-loans"); }
+// loan = { name, balance, annual_rate, monthly_payment, start_date }
+function addMyLoan(loan) { return callApi("POST", "/api/my-loans", loan); }
+function editMyLoan(id, loan) { return callApi("PUT", "/api/my-loans/" + id, loan); }
+function deleteMyLoan(id) { return callApi("DELETE", "/api/my-loans/" + id); }
+
+// ===== DASHBOARD (plain maths on the server, never the AI) =====
+// today = the phone's local date "YYYY-MM-DD" (weeks and months follow the user's own day)
+function getDashboard(today) { return callApi("GET", "/api/dashboard?today=" + today); }
+function setWeeklyBudget(amount, today) { return callApi("PUT", "/api/dashboard/weekly-budget", { amount: amount, today: today }); }
+
+// ===== FINANCIAL INSIGHTS =====
+// getInsights only reads (never calls the AI). generateInsights is used ONLY by the button.
+function getInsights(month) { return callApi("GET", "/api/insights?month=" + month); }
+function generateInsights(month) { return callApi("POST", "/api/insights/generate", { month: month }); }
+
 // ===== TARGETS TAB =====
 function getSavings() { return callApi("GET", "/api/savings"); }
 function updateSavings(bankBalance, monthlyTarget) {

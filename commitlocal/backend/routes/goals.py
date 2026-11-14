@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import delete
 
 from errors import AppError
-from database import find_user_row, get_savings_row, get_user_rows, open_db
+from database import find_user_row, get_savings_row, get_user_rows, open_db, read_savings_values
 from models import AddMoneyForm, Deposit, GoalForm, Income, SavingsGoal
 from money import (get_amount_to_add, get_goal_statuses, get_goals_warning, get_monthly_target,
                    get_this_month, get_today, to_cents, to_money, to_rupees)
@@ -28,7 +28,7 @@ def find_goal(db, goal_id, user_id):
 
 def build_goals_info(db, user_id):
     """All goals with their status, how much they need together, and the warning (if any)."""
-    savings = get_savings_row(db, user_id).to_dict()
+    savings = read_savings_values(db, user_id)
     incomes = get_user_rows(db, Income, user_id)
     target = get_monthly_target(savings["monthly_target"], incomes, get_this_month())
     goals = get_goal_statuses(get_user_rows(db, SavingsGoal, user_id), target, get_today())
@@ -110,7 +110,8 @@ def add_money_to_goal(goal_id: uuid.UUID, form: AddMoneyForm, user_id: uuid.UUID
         savings = get_savings_row(db, user_id)
         db.add(Deposit(user_id=user_id, goal_id=goal.id, amount_cents=cents, date=datetime.date.today()))
         goal.saved_cents += cents
-        savings.bank_balance_cents += cents
+        if savings.bank_balance_cents is not None:  # no balance added yet → don't invent one
+            savings.bank_balance_cents += cents
         db.flush()
         info = build_goals_info(db, user_id)
     info["added"] = amount

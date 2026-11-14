@@ -32,14 +32,14 @@ def row(summary_body, category):
 # ===== MONEY IN =====
 def test_regular_income_counts_from_its_start_month(logged_in):  # monthly income: not before, yes in and after start
     add_income(logged_in, 20000, "monthly", "2026-03-15")
-    assert summary(logged_in, "2026-02")["income"] == 0
+    assert summary(logged_in, "2026-02")["income"] is None  # no income that month = not given (not Rs 0)
     assert summary(logged_in, "2026-03")["income"] == 20000
     assert summary(logged_in, "2027-01")["income"] == 20000
 
 
 def test_one_off_income_only_in_its_own_month(logged_in):  # one-off: only the month it was received
     add_income(logged_in, 5000, "one-off", "2026-03-02", name="Gift", type_="Other")
-    assert [summary(logged_in, m)["income"] for m in ("2026-02", "2026-03", "2026-04")] == [0, 5000, 0]
+    assert [summary(logged_in, m)["income"] for m in ("2026-02", "2026-03", "2026-04")] == [None, 5000, None]
     listed = logged_in.get("/api/income", params={"month": "2026-03"}).json()
     assert len(listed["one_off"]) == 1 and listed["regular"] == []
 
@@ -54,9 +54,9 @@ def test_edit_and_delete_income(logged_in):  # edit changes the amount/type; del
     res = logged_in.put(f"/api/income/{income['id']}", json={"name": "Shop", "type": "Side hustle",
                                                              "amount": 1500, "frequency": "one-off", "date": "2026-02-10"})
     assert res.status_code == 200 and res.json()["amount"] == 1500 and res.json()["frequency"] == "one-off"
-    assert summary(logged_in, "2026-01")["income"] == 0 and summary(logged_in, "2026-02")["income"] == 1500
+    assert summary(logged_in, "2026-01")["income"] is None and summary(logged_in, "2026-02")["income"] == 1500
     assert logged_in.delete(f"/api/income/{income['id']}").status_code == 200
-    assert summary(logged_in, "2026-02")["income"] == 0
+    assert summary(logged_in, "2026-02")["income"] is None  # deleted: back to "not given"
 
 
 @pytest.mark.parametrize("changes", [{"amount": -5}, {"amount": 0}, {"amount": "abc"}, {"amount": 1e20},
@@ -71,7 +71,7 @@ def test_bad_income_is_rejected(logged_in, changes):  # bad income -> 400/422, n
 # ===== MONEY OUT =====
 def test_fixed_bill_repeats_every_month_from_its_start(logged_in):  # "repeats every month" -> counted from start month on
     add_expense(logged_in, 800, "Bills", "2026-03-05", is_fixed=True)
-    assert summary(logged_in, "2026-02")["spent"] == 0
+    assert summary(logged_in, "2026-02")["spent"] is None  # nothing recorded = unknown, not Rs 0
     assert summary(logged_in, "2026-03")["spent"] == 800 and summary(logged_in, "2026-09")["fixed_total"] == 800
 
 
@@ -117,10 +117,15 @@ def test_summary_card_maths(logged_in):  # In, Out, Saved, Left to spend and the
     assert (s["needs_percent"], s["wants_percent"], s["savings_percent"]) == (45.0, 15.0, 10.0)
 
 
-def test_summary_with_no_income_has_no_division_by_zero(logged_in):  # 0 income -> 0%, negative left to spend
+def test_summary_with_no_income_has_no_division_by_zero(logged_in):  # income not given -> no %, no left to spend
     add_expense(logged_in, 250, "Groceries", "2026-07-01")
     s = summary(logged_in, "2026-07")
-    assert s["needs_percent"] == 0 and s["left_to_spend"] == -250
+    assert s["income"] is None and s["needs_percent"] is None and s["left_to_spend"] is None
+    assert s["info"]["income"] == "missing" and s["spent"] == 250
+    # The user says "No income this month" -> income really is 0: left to spend can be worked out (no division by 0)
+    logged_in.put("/api/info-choices", json={"topic": "income", "month": "2026-07", "none": True})
+    s = summary(logged_in, "2026-07")
+    assert s["income"] == 0 and s["left_to_spend"] == -250 and s["needs_percent"] is None
 
 
 @pytest.mark.parametrize("month", ["2026-13", "2026-1", "abc", "2026-00"])

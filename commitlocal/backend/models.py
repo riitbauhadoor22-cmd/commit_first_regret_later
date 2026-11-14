@@ -129,7 +129,7 @@ class BudgetForm(BaseModel):
 
 
 class SavingsForm(BaseModel):
-    bank_balance: float = Field(ge=0, le=MAX_AMOUNT)
+    bank_balance: Optional[float] = Field(default=None, ge=0, le=MAX_AMOUNT)  # empty = not added (never 0 by itself)
     monthly_target: Optional[float] = Field(default=None, ge=0, le=MAX_AMOUNT)  # empty = 20% of regular income
 
 
@@ -170,6 +170,35 @@ class GameSubmitForm(BaseModel):
         for amount in value.values():  # NaN / Infinity / negative / huge -> 422
             check_range(amount, 0, MAX_AMOUNT, "Amounts must be between 0 and 10,000,000.")
         return value
+
+
+# ===== OPTIONAL INFORMATION: "I have none" + SAVED LOANS =====
+MAX_LOAN_AMOUNT = 100_000_000  # same limit as the Loans tab (LOAN_MAX_AMOUNT in loans-tab.js)
+
+
+class InfoChoiceForm(BaseModel):
+    topic: Literal["income", "expenses", "loans", "savings"]
+    month: Optional[str] = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")  # income/expenses only; empty = this month
+    none: bool  # True = "I have none" (counts as 0), False = undo (back to "not provided")
+
+
+class MyLoanForm(BaseModel):
+    name: str = Field(default="", max_length=60)                  # optional label, e.g. "Student loan"
+    balance: float = Field(gt=0, le=MAX_LOAN_AMOUNT)               # amount still to pay back
+    annual_rate: float = Field(ge=0, le=100)                       # % a year
+    monthly_payment: float = Field(gt=0, le=MAX_LOAN_AMOUNT)
+    start_date: Optional[datetime.date] = None
+
+
+# ===== DASHBOARD =====
+class WeeklyBudgetForm(BaseModel):
+    amount: Optional[float] = Field(default=None, gt=0, le=MAX_AMOUNT)  # empty = remove the weekly budget
+    today: Optional[datetime.date] = None  # the phone's local date (badges count weeks from the day it was set)
+
+
+# ===== FINANCIAL INSIGHTS (Groq) =====
+class InsightRequestForm(BaseModel):
+    month: Optional[str] = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")  # YYYY-MM, empty = this month
 
 
 # ===== DATABASE TABLES (SQLAlchemy ORM) =====
@@ -334,14 +363,15 @@ class SavingsSettings(Base):
     __tablename__ = "savings_settings"
     id = id_column()
     user_id = user_id_column(unique=True)
-    bank_balance_cents = cents_column(default=0)
+    bank_balance_cents = cents_column(nullable=True)    # empty = not added yet (migration 0006; was 0)
     monthly_target_cents = cents_column(nullable=True)  # empty = use 20% of regular income
     safety_net_saved_cents = cents_column(default=0)
     __table_args__ = not_negative("bank_balance_cents", "monthly_target_cents", "safety_net_saved_cents")
 
     def to_dict(self):
         target = self.monthly_target_cents
-        return {"user_id": str(self.user_id), "bank_balance": to_rupees(self.bank_balance_cents),
+        balance = self.bank_balance_cents
+        return {"user_id": str(self.user_id), "bank_balance": to_rupees(balance) if balance is not None else None,
                 "monthly_target": to_rupees(target) if target is not None else None,
                 "safety_net_saved": to_rupees(self.safety_net_saved_cents)}
 
@@ -405,3 +435,83 @@ class GameAttempt(Base):
     def to_dict(self):
         return {"attempt_id": str(self.id), "level": self.level, "score": self.score, "xp": self.xp,
                 "events_on": self.events_on, "created_at": iso(self.created_at), "completed_at": iso(self.completed_at)}
+
+
+class SavedInsight(Base):
+    """The last AI analysis of one user for one month (migration 0005). Reused until the fingerprint changes."""
+    __tablename__ = "ai_insights"
+    id = id_column()
+    user_id = user_id_column()
+    month = mapped_column(sa.String(7), nullable=False)           # YYYY-MM = the analysis period
+    fingerprint = mapped_column(sa.String(64), nullable=False)    # hash of the summary that was analysed
+    model = mapped_column(sa.String(80), nullable=False)          # Groq model used
+    content = mapped_column(sa.Text, nullable=False)              # the checked reply, as JSON
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)  # generation time (UTC)
+    __table_args__ = (sa.UniqueConstraint("user_id", "month", name="uq_ai_insights_user_month"),)
+
+
+class AiRequestLog(Base):
+    """One row per call we made to Groq (also failed ones): used for the daily limit and the cooldown."""
+    __tablename__ = "ai_requests"
+    id = id_column()
+    user_id = user_id_column()
+    month = mapped_column(sa.String(7), nullable=False)
+    model = mapped_column(sa.String(80), nullable=False)
+    outcome = mapped_column(sa.String(20), nullable=False, default="started")  # started / ok / AI_FAILED / ...
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, index=True)
+
+
+class InfoChoice(Base):
+    """The user said "I have none" for a topic (migration 0006). No row = not provided yet (never read as 0).
+    month = YYYY-MM for income / expenses, "" for loans / savings (whole account)."""
+    __tablename__ = "info_choices"
+    id = id_column()
+    user_id = user_id_column()
+    topic = mapped_column(sa.String(10), nullable=False)
+    month = mapped_column(sa.String(7), nullable=False, default="")
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
+    __table_args__ = (sa.UniqueConstraint("user_id", "topic", "month", name="uq_info_choices_user_topic_month"),
+                      sa.CheckConstraint("topic IN ('income', 'expenses', 'loans', 'savings')", name="topic_valid"))
+
+
+class MyLoan(Base):
+    """A loan the user chose to save on the Loans tab (migration 0006). Optional: no row = no loan info."""
+    __tablename__ = "my_loans"
+    id = id_column()
+    user_id = user_id_column()
+    name = mapped_column(sa.String(60), nullable=False, default="")
+    balance_cents = cents_column()
+    annual_rate = mapped_column(sa.Float, nullable=False)          # % a year
+    monthly_payment_cents = cents_column()
+    start_date = mapped_column(sa.Date, nullable=True)
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
+    __table_args__ = (*not_negative("balance_cents", "monthly_payment_cents"),
+                      sa.CheckConstraint("annual_rate BETWEEN 0 AND 100", name="rate_valid"))
+
+    def to_dict(self):
+        return {"id": str(self.id), "name": self.name, "balance": to_rupees(self.balance_cents),
+                "annual_rate": self.annual_rate, "monthly_payment": to_rupees(self.monthly_payment_cents),
+                "start_date": iso(self.start_date), "created_at": iso(self.created_at)}
+
+
+class WeeklyBudget(Base):
+    """The user's planned spending per week (Dashboard badges, migration 0007). No row = no weekly budget."""
+    __tablename__ = "weekly_budgets"
+    id = id_column()
+    user_id = user_id_column(unique=True)
+    amount_cents = cents_column()
+    set_on = mapped_column(sa.Date, nullable=False)  # weeks are counted from here (never before)
+    __table_args__ = not_negative("amount_cents")
+
+    def to_dict(self):
+        return {"amount": to_rupees(self.amount_cents), "set_on": iso(self.set_on)}
+
+
+class EarnedBadge(Base):
+    """A Dashboard badge the user earned (migration 0007). Never deleted; one per badge code per user."""
+    __tablename__ = "earned_badges"
+    id = id_column()
+    user_id = user_id_column()
+    code = mapped_column(sa.String(30), nullable=False)        # FIRST_WEEK, BUDGET_KEEPER, CONSISTENT_PLANNER, SAVINGS_STREAK
+    earned_on = mapped_column(sa.Date, nullable=False)         # the Sunday of the week that completed it
+    __table_args__ = (sa.UniqueConstraint("user_id", "code", name="uq_earned_badges_user_code"),)

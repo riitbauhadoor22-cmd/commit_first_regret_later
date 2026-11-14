@@ -15,7 +15,7 @@ A money app for young people aged **16–25**. It helps them:
 
 It is a **Progressive Web App (PWA)**. It opens in any phone browser (Chrome, Safari, Samsung Internet), can be added to the home screen, and still opens when offline.
 
-The app has **4 tabs** in a bottom tab bar: **Money**, **Targets**, **Loans**, **Arcade**.
+The app has **5 tabs** in a bottom tab bar: **Home (Dashboard)**, **Money**, **Targets**, **Loans**, **Arcade**. After logging in you land on the Dashboard.
 
 **Status:** ✅ Login + registration (with OTP countdown / Resend) is built. ✅ Full Money tab (month switcher, Left to spend card, Money in / Money out, budgets, fixed bills, recent) and Targets tab (bank balance, monthly saving, safety net, goals) restored from the earlier version, plus the Loans tab. ✅ Arcade has the **Budget Challenge** game. 📝 Voice is **planned**. All amounts are in rupees, shown as **Rs**. ✅ The whole app is in **English, French and Kreol Morisien** (picker EN / FR / KM on the login page and next to Log out).
 
@@ -32,7 +32,7 @@ commitlocal/
 ├── .gitignore                  ← keeps .env, the database and junk files out of git
 │
 ├── frontend/                   ← everything the browser sees (HTML, CSS, plain JS)
-│   ├── index.html              ← ✅ 4 tab pages (Money, Targets, Loans, Arcade), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists)
+│   ├── index.html              ← ✅ 5 tab pages (Dashboard, Money, Targets, Loans, Arcade), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists)
 │   ├── login.html              ← ✅ Login / Register tabs, "enter your code" box, "account locked" box
 │   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, code countdown + Resend OTP, calls /api/auth/...
 │   ├── style.css               ← ✅ dark navy glass theme (CSS variables at the top), cards, tab bar, bars (mobile-first, 360 / 390 / 430 px)
@@ -46,6 +46,9 @@ commitlocal/
 │   ├── arcade-tab.js           ← ✅ Arcade tab: Budget Challenge game (levels, fields, event, result, previous results)
 │   ├── loans-tab.js            ← ✅ Loans tab: forms, results, Chart.js graphs (CDN chart.js@4.4.1, hidden offline); section 2 calls /api/loans/predict
 │   ├── targets-tab.js          ← ✅ draws the Targets tab; New goal form; Add money; edit bank balance / monthly target
+│   ├── dashboard.js            ← ✅ Dashboard tab: draws GET /api/dashboard (balance, health score, spending / saving / loan graphs, recap, savings jar SVG, weekly budget + badges); no maths of its own, never the AI
+│   ├── jar-calc.js             ← ✅ savings jar coin count + deterministic positions (window.JarCalc + Node module.exports)
+│   ├── insights.js             ← ✅ "Financial insights" card (bottom of Money tab): 50/30/20 table, notes, goal progress, saved AI analysis, Generate/Refresh button (loaded after targets-tab.js: uses STATUS_KEYS)
 │   ├── voice.js                ← 🆕 microphone → text (Web Speech API, or record audio for /api/speech-to-text)
 │   ├── manifest.json           ← 🆕 app name, icons, colours, start page, "standalone" (makes it installable)
 │   ├── service-worker.js       ← 🆕 caches the app files so the app opens with no internet
@@ -59,7 +62,7 @@ commitlocal/
     ├── database.py             ← ✅ SQLAlchemy connection from DATABASE_URL (SQLite or PostgreSQL), open_db(), runs Alembic, user-filtered query helpers
     ├── models.py               ← ✅ incoming forms (Pydantic) + the database tables (SQLAlchemy ORM, see section 6)
     ├── migrate_old_db.py       ← ✅ ONE-TIME: copies users + data from the old finance.db into the new tables
-    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py)
+    ├── alembic.ini, migrations/ ← ✅ Alembic database migrations (migrations/versions/0001_new_secure_tables.py, 0002_profile_language.py, 0003_goal_category.py, 0004_game_attempts.py, 0005_ai_insights.py, 0006_optional_info.py, 0007_dashboard.py)
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
@@ -67,6 +70,10 @@ commitlocal/
     ├── game/                   ← ✅ Budget Challenge logic (no UI, no routes): scenarios.py = config (levels, categories, min_amount, locked, events, points — edit here),
     │                             events.py (pick + effect), budget_engine.py (checks, totals in cents, over-income block), scoring.py (score + feedback)
     ├── money.py                ← 🆕 ALL the maths, as plain functions with no database (easy to test) — see section 3
+    ├── info_status.py          ← ✅ provided / none / missing for income, expenses, loans, savings (plain functions) — see "Optional financial information"
+    ├── services/dashboard.py   ← ✅ every Dashboard number (plain functions, no database, no AI) — see "Dashboard" in section 3
+    ├── services/financial_analysis.py ← ✅ insights check-up WITHOUT AI: 50/30/20 split + differences, notes (codes), goal progress, vs last month, data gaps; anonymous AI summary + fingerprint
+    ├── services/ai_insights.py ← ✅ the ONLY Groq code: settings from .env, prompt, one HTTP call (httpx, no retries), reply check (Pydantic), in-memory guards (one request per user, pause after 429)
     ├── expense_parser.py       ← 🆕 "I spent 245 on lunch" → {amount: 245, category: "Food & drinks", note: "lunch"}
     ├── routes/
     │   ├── auth.py             ← ✅ /api/auth (+ `require_user` helper: 401 if not logged in) + /resend-code
@@ -77,6 +84,10 @@ commitlocal/
     │   ├── savings.py          ← 🆕 /api/savings: bank balance, monthly target, safety net (+ add money to it)
     │   ├── goals.py            ← 🆕 /api/goals: list (with status), add, edit, delete, add money, GET /{id}/inflation-projection
     │   ├── inflation.py        ← ✅ GET /api/inflation/projection (live preview for the goal form)
+    │   ├── dashboard.py        ← ✅ GET /api/dashboard?today= · PUT /api/dashboard/weekly-budget; saves newly earned badges
+    │   ├── info.py             ← ✅ GET /api/info-status, PUT /api/info-choices ("I have none" / undo); read_info_status() used by summary, savings, goals, insights
+    │   ├── my_loans.py         ← ✅ /api/my-loans: saved loans (optional) list / add / edit / delete
+    │   ├── insights.py         ← ✅ GET /api/insights (maths + saved AI analysis, never calls Groq) · POST /api/insights/generate (button only; cache → limits → one Groq call)
     │   ├── loans.py            ← ✅ /api/loans/predict: real-data risk model (loaded once at start) searched in Rs 5,000 steps + 40% rule; final = lower of the two
     │   └── voice.py            ← 🆕 /api/voice/parse-expense and /api/speech-to-text (calls OpenAI)
     ├── AI_model/loan_risk_model.pkl + loan_risk_model_card.json ← ✅ HistGradientBoostingClassifier on real Lending Club outcomes + its facts (rows, dates, AUC, base default rate, bands); git-ignored
@@ -98,6 +109,10 @@ tests/frontend/game-calc.test.js ← ✅ game-calc.js (cents, never NaN, UTC→l
 tests/frontend/loan-calc.test.js ← ✅ Node built-in tests for loan-calc.js (run: node --test tests/frontend)
 tests/frontend/i18n.test.js     ← ✅ same keys + no empty values in en/fr/mfe, t() fallback, every data-i18n / t("…") / backend error code has a translation
 tests/frontend/budget-calc.test.js ← ✅ no budget, under / at / over, colour thresholds 79/80/100/101%
+tests/backend/test_dashboard.py ← ✅ the 15 Dashboard cases (new user, income + expenses, savings, no goals, 1 / several / incomplete loans, 6+ / 1 month history, weekly budget kept / over / too little recorded, no date, edits + deletes keep badges, several goals, other users) + health score rules, deterministic, no AI
+tests/frontend/jar-calc.test.js ← ✅ coin count follows %, never NaN / overfull, bottom-up stacking inside the jar, same positions every time, only new coins drop
+tests/backend/test_optional_info.py ← ✅ the 12 "Permission Denied" cases: each topic alone, nothing at all, adding later, "I have none" + undo, editing / deleting, AI gets only given data, migration 0006 keeps old values, other users, validation
+tests/backend/test_insights.py ← ✅ check-up maths, no personal text sent, cache reuse, page loads / tab changes / adding expenses never call Groq, outdated after changes, refresh, repeated clicks, cooldown, 2 requests at once → 1 call, daily limit, Groq error / bad JSON / 429 pause, no key, other users. Groq is ALWAYS faked (`fake_groq` fixture in conftest.py, autouse) — tests can never reach the real API
 tests/backend/test_inflation.py ← ✅ CPI builder (temp files), 12-month rate, projection + edge cases, endpoints (uses tests/fixtures/cpi_sample.csv = FAKE data)
 tests/backend/                  ← pytest + FastAPI TestClient (temporary database, fake email — never sends real emails)
     ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender, logged-in clients
@@ -210,6 +225,85 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order, every calle
 - Goal category → CPI category: `GOAL_CPI_CATEGORIES` in `categories.py` (edit there). No/unknown category or < 13 months → "All Items" (+ FALLBACK_ALL_ITEMS warning).
 - Edge cases: deadline passed / < 1 month → `available: false` (DEADLINE_PASSED / DEADLINE_TOO_SOON); > 5 years → LONG_HORIZON warning; falling prices handled normally; fully funded → FUNDED_BUT_SHORT if the projection is above what's saved.
 - Frontend (`targets-tab.js`): each goal card fetches its estimate; the goal form has a "What is it for?" select and a live preview (400 ms after typing). Texts: `inflation.*`, `goalCat.*`, `cpi.*` keys. Always labelled "Estimate only" with source and data month.
+
+### Financial insights (Groq AI, only when asked) ✅
+Card at the bottom of the Money tab (`insights.js`), for the month picked at the top.
+
+**1. Check-up without AI** (`services/financial_analysis.py`, shown every time, works with no key):
+- Take-home income = the month's income (income entries are treated as take-home pay).
+- Needs / wants = this month's expenses by kind (fixed bills included). Savings = deposits into goals + safety net this month. Deposits are not expenses, so nothing is counted twice.
+- Loan repayments = the saved loans' monthly repayments (`/api/my-loans`). Not given → `loan_repayments: null` + gap `NO_LOANS`; "I don't have a loan" → 0. Never guessed.
+- Every topic follows "Optional financial information" below: missing → `null` and left out of the AI summary, never 0. Savings & debt is only compared with 20% when both savings and loans are known (`complete`). Remaining needs income + expenses (`remaining_excludes_loans` when loans are unknown).
+- `enough_for_ai` = at least one topic has real records. Otherwise generate answers 400 `AI_NOT_ENOUGH_DATA` without calling Groq.
+- Remaining = income − needs − wants − savings. Percent of income per group, and the difference in points from 50 / 30 / 20 ("savings & debt" = savings, since loans aren't recorded). No income → percents are `null` (shown as "—").
+- Notes (codes, translated in `lang/*.json` as `insights.obs.*`): NO_INCOME, OVER_INCOME, NEEDS_ABOVE / WANTS_ABOVE / SAVINGS_BELOW (only when 5+ points off), WITHIN_GUIDE, SPENDING_UP / SPENDING_DOWN (only when 10%+ vs last month, and only if last month has spending), GOALS_BEHIND. Gaps: `insights.gap.*`.
+- Goal progress = the same rules as the Targets tab (`get_goal_statuses`). 50/30/20 is described as a guide, never as a rule.
+
+**2. What Groq gets** (`build_ai_summary`): only calculated numbers: income, needs, wants, savings, remaining, the 50/30/20 table, top 6 categories with amounts, fixed bills total, change vs last month, saving target, safety net, goals as "Goal 1, Goal 2…" (category, target, saved, %, needs/month, months left, status, priority) and the list of missing information. **No** names, goal names, notes, email or ids.
+
+**3. When Groq is called** (`routes/insights.py`): ONLY from POST `/api/insights/generate` (the button). Loading or redrawing the tab, changing tabs, adding or editing anything, and opening a saved analysis only use GET `/api/insights`, which never calls Groq. Steps of generate:
+1. Work out the summary and its **fingerprint** (SHA-256 of the summary with money rounded to Rs 50 and percents to whole numbers, so tiny edits don't count).
+2. A saved analysis for this user + month with the **same fingerprint** → returned as it is (`cached: true`), no call.
+3. No `GROQ_API_KEY` → 503 `AI_NOT_CONFIGURED`.
+4. The same user already has a request running (double tap, second tab) → this request waits for it and shares its result (409 `AI_IN_PROGRESS` if that one failed).
+5. Paused after a Groq 429 → 503 `AI_RATE_LIMITED` (+ `Retry-After`, seconds from Groq's header).
+6. Daily limit reached → 429 `AI_DAILY_LIMIT`. Cooldown since the last request not over → 429 `AI_COOLDOWN` (+ seconds).
+7. Prompt longer than `AI_MAX_INPUT_CHARS` → 400 `AI_INPUT_TOO_LARGE`.
+8. A row is written to `ai_requests` (counts for the limit even if the call fails), then **one** call. It is never retried automatically. Timeout → 502 `AI_TIMEOUT`; other errors → 502 `AI_FAILED`; reply that isn't the right JSON shape → 502 `AI_BAD_RESPONSE` (nothing saved).
+9. A good reply is saved in `ai_insights` (one row per user + month: fingerprint, model, time, the JSON) and shown.
+- When the data changes, the saved analysis stays visible, marked **outdated** ("Your numbers changed… tap Refresh analysis"). A new one is only made when the user taps.
+- Button: "Generate Financial Insights" (none) / "Refresh analysis" (outdated) / "Analysis is up to date" (disabled when fresh) / "Analysing…" (disabled while running). Disabled with a message when not set up, at the daily limit, or paused.
+- Request to Groq: OpenAI-compatible `https://api.groq.com/openai/v1/chat/completions` with `httpx`, temperature 0.2, `max_completion_tokens` from settings, `reasoning_effort: low` for the gpt-oss models. Models `openai/gpt-oss-20b` / `-120b` use **Structured Outputs** (`json_schema`, `strict: true`); others use JSON Object Mode. Every reply is checked again with Pydantic (`InsightReply`) and extra list items are cut (max 5 observations, 3 suggestions).
+- Reply shape: `{overview, observations[], suggestions[{title, description, reason, priority low/medium/high}], savings_analysis, encouragement}`. The AI text is English only (the rest of the card is translated).
+- Guards live in memory of ONE server process (fine for the hackathon). With several workers, the daily limit and cooldown (in the database) still apply, but two workers could each start a request at the same moment.
+
+**Settings** (`backend/.env`, empty = default): `GROQ_API_KEY`, `GROQ_MODEL` (openai/gpt-oss-20b), `AI_DAILY_LIMIT` (5 per user per UTC day), `AI_COOLDOWN_SECONDS` (60), `AI_MAX_OUTPUT_TOKENS` (1000), `AI_MAX_INPUT_CHARS` (6000), `AI_TIMEOUT_SECONDS` (25).
+
+### Dashboard (first tab after login) ✅
+One GET `/api/dashboard?today=YYYY-MM-DD` (the phone's local date; ignored if more than 2 days from the server's) → `services/dashboard.py`. Plain maths on the logged-in user's own rows; **never Groq**. Opening the tab = that one GET (no AI, no other calls). Every part says when it can't be worked out instead of showing Rs 0 (same provided / none / missing rules as below).
+
+1. **Available this month** = this month's income − expenses (everyday + fixed bills) − saved loans' monthly repayments − deposits into goals / safety net. Deposits are not expenses here, so nothing is counted twice; the app has no account-to-account transfers. Needs income + expenses known; unknown loans are left out and said so. State: positive / neutral (under Rs 1) / negative. Compared with last month when last month can be worked out too. "Already put aside" = goals' saved + safety net (kept apart from available cash; bank balance shown only if given). It is a **monthly** balance: a running total since the first record would need months nobody entered.
+2. **Monthly spending**: the last 6 months **that have recorded expenses** (empty months are skipped, never drawn as 0). Total bar, or stacked by category (switch). Tooltip: total + % vs the calendar month before (only if that month has data).
+3. **Monthly saving rate** = deposits ÷ take-home income × 100, for months with income given and from the month saving started (first goal or deposit). Bars = amount, line = rate, dashed line = 20% guide. Trend from the last 2 points: ±2 points = stable. No goals/deposits or no income → empty state.
+4. **Loan projection**: saved loans store amount left, rate, monthly repayment, optional start date (no original amount, frequency = monthly, **no payment history**). From this month: balance → balance + balance × rate/12 − repayment, until 0 (max 30 years). Payoff month shown; repayment ≤ monthly interest → "never paid off" message, not a graph. One line per loan (picker) or all combined (only if every loan can be projected). Always labelled an estimate (rates, missed or extra payments change it); history isn't drawn because it isn't stored.
+5. **Monthly recap**: income, expenses, savings, loan repayments, left, biggest category, saving vs monthly target. Sentences = fixed templates chosen by rules (codes `dash.recap.*`): spending up / down (≥ 5%) / same vs last month, top category (same as last month or new), saved more / less, "so far this month" when there's no history, money left / overspent. Only when the numbers exist.
+6. **Money habits score** (0–100, not a credit score). 4 parts, each from checks; a check that can't be measured is **skipped, not scored 0**; a part = earned ÷ measurable points × its weight; the score = earned ÷ measured weight × 100. Under 50 measurable points → "Not enough data yet".
+   - Budget management 30: spending + loans within income (12; within 10% over = 4), money left after savings and loans (8), category budgets kept (10, only if budgets are set).
+   - Spending habits 25: wants share (10: of income ≤ 30% / ≤ 40%; without income: of spending ≤ 40% / ≤ 60%; needs are never penalised), stable vs the average of up to 3 earlier months with data (10: rise ≤ 15% / ≤ 30%), categorised (5: share not in "Other" ≥ 80% / ≥ 50%).
+   - Savings consistency 25 (only if the user saves): saved this month (10), share of the last 3 months with a deposit since saving started (10, needs 2+ months), goals On track / Done (5, needs a known target).
+   - Financial commitments 20: "I don't have a loan" = 20. With loans: repayments ÷ income ≤ 30% / ≤ 40% (10), income − spending − repayments ≥ 0 (10). "Paid on time" is never judged (no history: never assume missed).
+   - Levels: ≥ 80 Excellent, ≥ 60 Good, ≥ 40 Fair, else Needs attention. "What helped most" = best check; tip = weakest check (`dash.health.improve.*`).
+7. **Weekly budget + badges**: PUT `/api/dashboard/weekly-budget {amount | null, today}` (`weekly_budgets`, one per user; changing the amount keeps the start date). Weeks = Monday–Sunday in the user's local dates; only **finished** weeks from the first full week after the budget was set; only everyday expenses (monthly fixed bills aren't weekly). A week is **kept** when spending ≤ budget AND spending was recorded on ≥ 3 different days (an empty week is not proof). Badges (`earned_badges`, unique per user + code, never deleted, earned_on = the Sunday): FIRST_WEEK (first kept week), BUDGET_KEEPER (2 kept weeks in a row), CONSISTENT_PLANNER (4 kept weeks), SAVINGS_STREAK (a deposit in 4 finished weeks in a row). Checked on every dashboard load; new ones get a toast. The weekly bar shows this week's spending, days left and days recorded.
+8. **Savings jar** (`jar-calc.js` + SVG in `dashboard.js`): one goal at a time (chips). Coins = round(% × 90), at least 1 if anything is saved, stacked bottom-up 5 per row (18 rows), so the pile height follows the % exactly; positions from a fixed hash (never random), clipped to the jar's inside. Coins drop in (CSS, 0.55 s) **only when the saved amount went up since this phone last showed it** (`localStorage "jarSeen.<goal id>"`, in try/catch: no storage = no animation). Decreases redraw without dropping. 100% = full jar + sparkles. No goals → "Create a savings goal…".
+- New user: welcome card with + Add income / + Add expense / + New goal / + Add a loan (they open the right tab and form).
+
+### Optional financial information ("Permission Denied") ✅
+The user may refuse any money detail. The app never asks for income, expenses, loans or savings at registration, and every tab opens without them.
+
+**Three states per topic** (`info_status.py`, GET `/api/info-status?month=`):
+| State | Meaning | Shown as |
+|---|---|---|
+| `provided` | real records: an income counted this month, an expense counted this month, a saved loan, a goal / deposit / bank balance / own target | the numbers |
+| `none` | the user tapped "No income this month" / "Nothing spent this month" / "I don't have a loan" / "I'm not saving right now" (`info_choices` row) | a real **0**, with "Marked: … · Undo" |
+| `missing` | nothing given | **"—"** + a friendly prompt (blue box, never error red). **Never 0** |
+Real records always win over a "none" choice. Income / expenses choices are per month, loans / savings for the whole account. PUT `/api/info-choices {topic, month?, none}` sets or undoes one. No zero-value records are ever created by just looking: `read_savings_values()` reads without inserting (the old `get_savings_row()` is only used when saving something, and starts with an empty bank balance).
+
+| Topic missing | Still works | Not shown (prompt instead) |
+|---|---|---|
+| Income | expenses, budgets, goals, saved loans, game, loan calculators | left to spend, In, %s and 50/30/20 bar, 20% default saving target (→ goals "No target", no warning), income-based AI advice |
+| Expenses | income, goals, loans | Out, left to spend, needs/wants %, category amounts ("—"), safety-net size in insights, spending change |
+| Loans | everything else | loan repayment plan (until details are typed or a loan is saved), savings & debt vs 20% |
+| Savings | everything else | Saved ("—"), bank balance ("Not added yet"); "Create a savings goal…" prompt |
+| All | the whole app, Budget Challenge, loan calculators, inflation estimate | every personal number; AI button disabled ("Add some income, expenses, savings or a loan first") |
+
+Prompts (texts as in the brief): "Add your income information to view income-based insights." · "Start recording your expenses to see your spending breakdown." · "Add your loan details to view repayment predictions." · "Create a savings goal to start tracking your progress." Shared helper `makeInfoPrompt()` in `app.js`.
+
+- **Money tab:** dark card shows "—" for unknown In / Out / Saved / Left to spend, no 50/30/20 bar without income + expenses, and one prompt per missing topic (+ Add, + "none"). Category rows show "—" instead of Rs 0 while expenses are missing.
+- **Targets tab:** "Not added yet" bank balance (adding money to a goal doesn't invent one), "—" monthly target with a note when there's no income and no own target (the "use 20%" button is hidden), goal status "No target", savings prompt with "I'm not saving right now".
+- **Loans tab:** "Saved loans" list (tap = show its plan, Delete), "+ Add another loan", optional "Loan name", "Save this loan" after a good calculation (same checks as Calculate: amount > 0 and ≤ Rs 10 crore, rate 0–100%, repayment > 0; the backend checks the same). "Existing repayments" in section 2 is pre-filled from the saved loans; income / expenses are only pre-filled when given.
+- **Bank balance** can be cleared again (PUT `/api/savings` with `bank_balance: null`).
+- **Device permissions:** the app asks for none (no camera, location, contacts, notifications or microphone; the mic button only opens the Add expense form until voice is built). Nothing to deny.
+- **Existing users:** migration 0006 only adds tables and allows an empty bank balance; every existing value (also a Rs 0 balance) is kept.
 
 ### Voice → expense 🆕
 1. User taps the mic (on the Everyday spending card, or "Say it" on Add expense).
@@ -325,10 +419,16 @@ profiles  otp_codes   sessions    income    expenses   budgets  savings_settings
 | `income` | id, user_id, name, source, amount_cents, frequency, date, created_at | `source` = Salary/Allowance/… (API field `type`) |
 | `expenses` | id, user_id, amount_cents, category, kind, description, date, is_fixed, source, created_at | `description` = API field `note`; `source` = typed/voice/quick; `is_fixed` = repeats monthly |
 | `budgets` | id, user_id, category, amount_cents, period ("monthly"), start_date | one per user per category (API field `monthly_limit`) |
-| `savings_settings` | id, user_id (unique), bank_balance_cents, monthly_target_cents (empty = 20% of regular income), safety_net_saved_cents | made the first time it's needed |
+| `savings_settings` | id, user_id (unique), bank_balance_cents (empty = not added, migration 0006), monthly_target_cents (empty = 20% of regular income), safety_net_saved_cents | made only when the user saves something (never just by looking) |
 | `savings_goals` | id, user_id, name, target_cents, saved_cents, deadline, priority, category (optional, e.g. "Phone"), created_at | API fields `target_amount`, `saved_amount` |
 | `game_attempts` | id (= attempt_id), user_id, level, events_on, event, stage (start/event/done), allocation (JSON cents), score 0–100, xp, xp_awarded, created_at, completed_at | Arcade Budget Challenge (migration 0004) |
 | `deposits` | id, user_id, goal_id (empty = safety net), amount_cents, date, created_at | deleting a goal deletes its deposits |
+| `ai_insights` | id, user_id, month (YYYY-MM), fingerprint, model, content (JSON), created_at | the saved Groq analysis, one per user + month (migration 0005) |
+| `ai_requests` | id, user_id, month, model, outcome (started / ok / AI_FAILED / …), created_at | one row per Groq call: daily limit + cooldown (migration 0005) |
+| `info_choices` | id, user_id, topic (income / expenses / loans / savings), month (YYYY-MM, "" for loans / savings), created_at | "I have none" (migration 0006); no row = not given |
+| `weekly_budgets` | id, user_id (unique), amount_cents, set_on (date) | Dashboard weekly spending budget (migration 0007) |
+| `earned_badges` | id, user_id, code, earned_on (date); unique (user_id, code) | Dashboard badges, never deleted (migration 0007) |
+| `my_loans` | id, user_id, name, balance_cents, annual_rate (%), monthly_payment_cents, start_date (optional), created_at | saved loans (migration 0006), optional |
 
 `created_at` is used to keep "newest first" order (UUIDs have no order). The old `overall_budget` table is gone (not used by the current routes).
 
@@ -361,7 +461,7 @@ All money routes need you to be logged in (401 otherwise).
 | GET `/api/auth/me` ✅ | who is logged in + saved `language` (null if never set) (401 if nobody) |
 | PUT `/api/auth/language` ✅ | `{language: en/fr/mfe}` saved on `profiles.language` so it follows the user across devices; `app.js` applies it after `/me` and saves each switch (`saveMyLanguage` in api.js, silent on failure); login page stays localStorage-only |
 | POST `/api/auth/logout` ✅ | log out |
-| GET `/api/summary?month=YYYY-MM` 🆕 | income, spent, saved, left to spend, %s, category rows (spent / budget / over_by), fixed bills, last 3 expenses |
+| GET `/api/summary?month=YYYY-MM` 🆕 | `info` (provided / none / missing) + income, spent, saved, left to spend, %s (each **null** when not given), category rows (spent / budget / over_by), fixed bills, last 3 expenses |
 | GET `/api/income?month=YYYY-MM` 🆕 | regular incomes + one-offs of that month |
 | POST `/api/income` 🆕 | add an income |
 | PUT / DELETE `/api/income/{id}` 🆕 | edit / delete an income |
@@ -381,7 +481,15 @@ All money routes need you to be logged in (401 otherwise).
 | POST `/api/goals/{id}/add-money` 🆕 | add money to a goal |
 | GET `/api/goals/{id}/inflation-projection` ✅ | inflation estimate for one goal (see "Inflation estimate") |
 | GET `/api/inflation/projection?target&current&deadline&category` ✅ | same estimate for the goal form preview (nothing saved) |
+| GET `/api/insights?month=YYYY-MM` ✅ | `{analysis (maths, no AI), saved {status none/fresh/outdated, insight, generated_at, model}, usage {used_today, daily_limit, cooldown_seconds_left}, ai_configured, paused_seconds}`. **Never calls Groq** |
+| POST `/api/insights/generate` ✅ | `{month?}` → same reply + `cached`. Calls Groq only if no valid saved analysis and within the limits (see "Financial insights"); 429 / 409 / 503 / 502 / 400 with codes `AI_*` |
 | POST `/api/voice/parse-expense` 🆕 | text → suggested `{amount, category, kind, note}` (not saved) |
+| GET `/api/dashboard?today=YYYY-MM-DD` ✅ | everything on the Dashboard: `balance, spending, savings, loans, recap, health, weekly, recent_weeks, jar, badges {earned, all, new}, info, is_new_user` (plain maths, never the AI) |
+| PUT `/api/dashboard/weekly-budget` ✅ | `{amount (empty = remove), today}` → same reply as GET |
+| GET `/api/info-status?month=` ✅ | `{income, expenses, loans, savings}`: provided / none / missing |
+| PUT `/api/info-choices` ✅ | `{topic, month?, none}` → "I have none" (true) or undo (false); returns the 4 states |
+| GET / POST `/api/my-loans` ✅ | saved loans `{loans, total_monthly_payment}` / add `{name?, balance, annual_rate, monthly_payment, start_date?}` |
+| PUT / DELETE `/api/my-loans/{id}` ✅ | edit / delete a saved loan (someone else's → 404) |
 | POST `/api/loans/predict` ✅ | `{monthly_income, monthly_expenses?, existing_debt_payment?, interest_rate?, years?, missed_payment?}` → `{predicted_max_loan, ai_max_loan, limited_by, predicted_risk, risk_level, base_default_rate, model_info{rows,date_from,date_to,dataset}, max_payment_to_income, formula_max_loan, formula_monthly_payment, debt_to_income_ratio, verdict, source}` |
 | GET `/api/game/levels` ✅ | Budget Challenge config (levels, points, XP bonus) |
 | POST `/api/game/attempts` ✅ | `{level, events_on}` → `{attempt_id, level, events_on, has_event}` (event chosen + stored, not shown yet) |
@@ -423,6 +531,12 @@ Gmail allows about 500 emails a day, which is plenty for a hackathon.
 
 Text-to-speech and translation (OpenAI or Google Cloud / DeepL) are **later** features, not part of this task.
 
+### Groq ✅ (Financial insights, optional)
+1. Sign in at **console.groq.com** (free plan, no card needed) → **API Keys** → **Create API Key** → copy it.
+2. Put it in `backend/.env` as `GROQ_API_KEY=...`. Leave `GROQ_MODEL` empty for `openai/gpt-oss-20b` (check console.groq.com/docs/models if Groq retires it).
+3. Restart the server. Without a key the card still shows all the maths; the button says AI isn't set up.
+Never put the key in JS or commit it (`.env` is git-ignored).
+
 ### Keys you need to get
 0. **`GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD`**: needed for login (see above).
 1. **`OPENAI_API_KEY`** (optional): platform.openai.com → API keys → Create key; add about $5 of credit. Without it, voice still works in Chrome on Android; other phones show "type it instead".
@@ -434,6 +548,13 @@ GMAIL_ADDRESS=
 GMAIL_APP_PASSWORD=
 OPENAI_API_KEY=
 DATABASE_URL=sqlite:///./app.db
+GROQ_API_KEY=
+GROQ_MODEL=
+AI_DAILY_LIMIT=
+AI_COOLDOWN_SECONDS=
+AI_MAX_OUTPUT_TOKENS=
+AI_MAX_INPUT_CHARS=
+AI_TIMEOUT_SECONDS=
 ```
 
 ---

@@ -19,6 +19,7 @@ let chosenFrequency = null;
 let detailCategory = null;    // which category the category pop-up shows
 let detailEditingId = null;   // expense being edited in the category pop-up (null = adding)
 let detailEditingKind = null; // keep its Need/Want when editing
+let expensesGiven = true;     // false = no spending recorded this month (and not "Nothing spent"): show "—", not Rs 0
 
 // ===== LOAD AND DRAW THE WHOLE TAB =====
 async function loadMoneyTab() {
@@ -26,6 +27,7 @@ async function loadMoneyTab() {
   try {
     const [summary, chips, income] = await Promise.all([getSummary(shownMonth), getQuickAdd(), getIncome(shownMonth)]);
     categoryList = summary.categories;
+    expensesGiven = summary.info.expenses !== "missing";
     incomeTypes = income.types;
     drawSummaryCard(summary);
     drawQuickAdd(chips);
@@ -36,6 +38,7 @@ async function loadMoneyTab() {
   } catch (error) {
     showToast(error.message, true);
   }
+  loadInsights(shownMonth); // insights.js: reads the saved analysis, never calls the AI
 }
 
 function changeMonth(count) {
@@ -44,21 +47,52 @@ function changeMonth(count) {
 }
 
 // ===== DARK SUMMARY CARD =====
+// Numbers the user hasn't given come back as null: they show "—" and a prompt, never "Rs 0"
 function drawSummaryCard(summary) {
   const left = byId("left-to-spend");
-  left.textContent = summary.left_to_spend < 0 ? formatOut(summary.left_to_spend) : formatMoney(summary.left_to_spend);
-  left.classList.toggle("negative", summary.left_to_spend < 0);
+  const leftKnown = summary.left_to_spend !== null;
+  left.textContent = !leftKnown ? "—"
+    : summary.left_to_spend < 0 ? formatOut(summary.left_to_spend) : formatMoney(summary.left_to_spend);
+  left.classList.toggle("negative", leftKnown && summary.left_to_spend < 0);
+  byId("left-note").hidden = leftKnown;
 
   // The 3 small numbers are rounded to whole rupees so they fit on small phones
-  byId("sum-in").textContent = formatIn(Math.round(summary.income));
-  byId("sum-out").textContent = formatOut(Math.round(summary.spent));
-  byId("sum-saved").textContent = formatMoney(Math.round(summary.saved));
+  byId("sum-in").textContent = summary.income === null ? "—" : formatIn(Math.round(summary.income));
+  byId("sum-out").textContent = summary.spent === null ? "—" : formatOut(Math.round(summary.spent));
+  byId("sum-saved").textContent = summary.saved === null ? "—" : formatMoney(Math.round(summary.saved));
 
   drawSplitBar(summary.needs_percent, summary.wants_percent, summary.savings_percent);
+  drawMoneyPrompts(summary.info);
+  byId("spend-empty").hidden = summary.info.expenses !== "missing";
+}
+
+// "Add your income…" / "Start recording your expenses…" (+ "No income this month" / "Nothing spent this month")
+const MONEY_PROMPTS = {
+  income: { ask: "money.prompt.income", add: "income.addButton", none: "money.none.income", marked: "money.marked.income" },
+  expenses: { ask: "money.prompt.expenses", add: "money.addExpenseButton", none: "money.none.expenses",
+    marked: "money.marked.expenses" },
+};
+
+function drawMoneyPrompts(info) {
+  const box = byId("money-prompts");
+  box.replaceChildren();
+  const openForm = { income: () => openIncomeSheet(null, "monthly"), expenses: () => openExpenseSheet(null) };
+  ["income", "expenses"].forEach((topic) => {
+    const prompt = makeInfoPrompt(topic, info[topic], MONEY_PROMPTS[topic], shownMonth, openForm[topic], loadMoneyTab);
+    if (prompt) box.append(prompt);
+  });
 }
 
 // The Needs / Wants / Savings bar. If they add up to more than 100%, the bar is squeezed to fit.
+// No income (or no spending) given → no bar: percentages would be made up.
 function drawSplitBar(needs, wants, savings) {
+  const known = needs !== null && wants !== null;
+  byId("split-bar").hidden = !known;
+  if (!known) {
+    byId("split-legend").replaceChildren(makeElement("span", "aim", t("money.splitNeedsIncome")));
+    return;
+  }
+  savings = savings === null ? 0 : savings; // savings not given: that part of the bar stays empty
   const total = Math.max(needs + wants + savings, 100);
   byId("split-needs").style.width = (needs / total) * 100 + "%";
   byId("split-wants").style.width = (wants / total) * 100 + "%";
@@ -132,7 +166,7 @@ function makeCategoryRow(row) {
   // Right side: "Rs 2,300 / Rs 4,000"  or  "Rs 190  Set budget"
   const right = makeElement("span", "cat-right");
   const amount = makeElement("span", "cat-amount");
-  amount.append(makeElement("strong", "", formatMoney(progress.spent)));
+  amount.append(makeElement("strong", "", expensesGiven ? formatMoney(progress.spent) : "—"));
   right.append(amount);
   top.append(right);
   item.append(top);
@@ -794,6 +828,7 @@ function startMoneyTab() {
   });
   byId("income-form").addEventListener("submit", saveIncomeForm);
   byId("income-delete").addEventListener("click", deleteShownIncome);
+  startInsights(); // insights.js
 
   loadMoneyTab();
 }

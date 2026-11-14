@@ -8,12 +8,16 @@ from database import create_tables
 from errors import add_error_handlers
 from routes.auth import router as auth_router
 from routes.budgets import router as budgets_router
+from routes.dashboard import router as dashboard_router
 from routes.expenses import router as expenses_router
 from routes.game import router as game_router
 from routes.goals import router as goals_router
 from routes.income import router as income_router
+from routes.info import router as info_router
+from routes.insights import router as insights_router
 from routes.inflation import router as inflation_router
 from routes.loans import router as loans_router
+from routes.my_loans import router as my_loans_router
 from routes.savings import router as savings_router
 from routes.summary import router as summary_router
 from services.inflation import load_cpi
@@ -32,6 +36,10 @@ app.include_router(goals_router)
 app.include_router(loans_router)
 app.include_router(inflation_router)
 app.include_router(game_router)  # Arcade: Budget Challenge
+app.include_router(dashboard_router)  # Dashboard tab (plain maths, never the AI)
+app.include_router(info_router)  # optional info: provided / none / missing
+app.include_router(my_loans_router)  # saved loans (optional)
+app.include_router(insights_router)  # Financial insights (Groq only on the button)
 
 
 # Tell browsers to re-check frontend files every time (a quick 304 if unchanged).

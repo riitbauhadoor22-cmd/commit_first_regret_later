@@ -21,7 +21,177 @@
 <body class="app">
 
   <!-- ===================== TAB 1: MONEY ===================== -->
-  <main id="page-money" class="page">
+  <!-- ===================== TAB 0: DASHBOARD (first tab after logging in) ===================== -->
+  <!-- Everything here comes from GET /api/dashboard (plain maths on the user's own records, never the AI) -->
+  <main id="page-dashboard" class="page">
+    <header class="page-head">
+      <h1 data-i18n="nav.dashboard">Dashboard</h1>
+      <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
+    </header>
+    <div>
+      <p id="dash-welcome" class="dash-welcome"></p>
+      <p id="dash-date" class="muted"></p>
+    </div>
+
+    <!-- New user: shortcuts instead of empty numbers -->
+    <section id="dash-start" class="card stack" hidden>
+      <h2 data-i18n="dash.start.title">Welcome! Let's set up your money</h2>
+      <p class="muted" data-i18n="dash.start.text">Add whatever you're happy to share. Everything is optional and the dashboard fills in as you go.</p>
+      <div class="dash-shortcuts">
+        <button id="dash-add-income" class="btn btn-small" type="button" data-i18n="income.addButton">+ Add income</button>
+        <button id="dash-add-expense" class="btn btn-small" type="button" data-i18n="money.addExpenseButton">+ Add expense</button>
+        <button id="dash-add-goal" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button>
+        <button id="dash-add-loan" class="btn btn-small" type="button" data-i18n="dash.start.loan">+ Add a loan</button>
+      </div>
+    </section>
+
+    <!-- 1. Available this month -->
+    <section class="card dark" aria-labelledby="dash-balance-label">
+      <div class="card-head">
+        <p id="dash-balance-label" class="label" data-i18n="dash.balance.title">Available this month</p>
+        <span id="dash-balance-state" class="status dash-state" hidden></span>
+      </div>
+      <p id="dash-balance" class="big-number">…</p>
+      <p id="dash-balance-compare" class="muted"></p>
+      <p id="dash-put-aside" class="muted"></p>
+      <p class="muted small" data-i18n="dash.balance.how">Income − expenses − loan repayments − savings put aside this month.</p>
+      <button id="dash-details-btn" class="link-btn" type="button" style="align-self: flex-start;" data-i18n="dash.balance.details">See the details in Money</button>
+    </section>
+
+    <!-- 2. Financial health score -->
+    <section class="card stack" aria-labelledby="dash-score-title">
+      <h2 id="dash-score-title" data-i18n="dash.health.title">Money habits score</h2>
+      <div class="score-top">
+        <div id="dash-score-ring" class="score-ring"><span id="dash-score">—</span></div>
+        <div>
+          <p id="dash-score-level" class="item-name"></p>
+          <p id="dash-score-why" class="muted"></p>
+        </div>
+      </div>
+      <p id="dash-score-tip" class="tip-line"></p>
+      <ul id="dash-score-parts" class="score-parts"></ul>
+      <p class="muted small" data-i18n="dash.health.disclaimer">A guide to your habits from what you've recorded, out of 100. It is not a credit score and says nothing about your worth.</p>
+    </section>
+
+    <!-- 3. Spending per month -->
+    <section class="card stack" aria-labelledby="dash-spend-title">
+      <div class="card-head">
+        <h2 id="dash-spend-title" data-i18n="dash.spend.title">Monthly spending</h2>
+        <div id="dash-spend-toggle" class="toggle small-toggle">
+          <button type="button" data-spend-view="total" class="active" aria-pressed="true" data-i18n="dash.spend.total">Total</button>
+          <button type="button" data-spend-view="category" aria-pressed="false" data-i18n="dash.spend.byCategory">By category</button>
+        </div>
+      </div>
+      <div id="dash-spend-empty" class="info-prompt" hidden>
+        <p data-i18n="money.prompt.expenses">Start recording your expenses to see your spending breakdown.</p>
+        <div class="info-actions"><button id="dash-spend-add" class="btn btn-small" type="button" data-i18n="money.addExpenseButton">+ Add expense</button></div>
+      </div>
+      <div id="dash-spend-body">
+        <p id="dash-spend-latest" class="muted"></p>
+        <div class="chart-box"><canvas id="dash-spend-chart" aria-label="Spending per month" data-i18n-aria="dash.spend.title"></canvas></div>
+      </div>
+      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+    </section>
+
+    <!-- 4. Saving rate per month -->
+    <section class="card stack" aria-labelledby="dash-save-title">
+      <h2 id="dash-save-title" data-i18n="dash.save.title">Monthly saving rate</h2>
+      <div id="dash-save-empty" class="info-prompt" hidden>
+        <p id="dash-save-empty-text"></p>
+        <div class="info-actions"><button id="dash-save-add" class="btn btn-small" type="button" data-i18n="dash.save.go">Go to Targets</button></div>
+      </div>
+      <div id="dash-save-body">
+        <p id="dash-save-latest" class="muted"></p>
+        <div class="chart-box"><canvas id="dash-save-chart" aria-label="Saving rate per month" data-i18n-aria="dash.save.title"></canvas></div>
+        <p class="muted small" data-i18n="dash.save.how">Saving rate = money put into goals and the safety net ÷ take-home income. The dashed line is the 20% guide.</p>
+      </div>
+      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+    </section>
+
+    <!-- 5. Loan repayment projection -->
+    <section class="card stack" aria-labelledby="dash-loan-title">
+      <h2 id="dash-loan-title" data-i18n="dash.loan.title">Loan repayment projection</h2>
+      <div id="dash-loan-empty" class="info-prompt" hidden>
+        <p id="dash-loan-empty-text"></p>
+        <div class="info-actions"><button id="dash-loan-add" class="btn btn-small" type="button" data-i18n="dash.start.loan">+ Add a loan</button></div>
+      </div>
+      <div id="dash-loan-body" class="stack">
+        <select id="dash-loan-select" aria-label="Which loan" data-i18n-aria="dash.loan.which"></select>
+        <p id="dash-loan-outstanding" class="item-name"></p>
+        <p id="dash-loan-payoff" class="muted"></p>
+        <div class="chart-box"><canvas id="dash-loan-chart" aria-label="Projected loan balance" data-i18n-aria="dash.loan.projected"></canvas></div>
+        <p id="dash-loan-note" class="muted small"></p>
+      </div>
+      <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+    </section>
+
+    <!-- 6. Monthly recap -->
+    <section class="card dark stack" aria-labelledby="dash-recap-title">
+      <div class="card-head">
+        <h2 id="dash-recap-title" data-i18n="dash.recap.title">Monthly recap</h2>
+        <span id="dash-recap-month" class="muted"></span>
+      </div>
+      <dl class="recap-grid">
+        <div><dt data-i18n="money.in">In</dt><dd id="dash-recap-income" class="in"></dd></div>
+        <div><dt data-i18n="money.out">Out</dt><dd id="dash-recap-expenses" class="out"></dd></div>
+        <div><dt data-i18n="money.saved">Saved</dt><dd id="dash-recap-savings"></dd></div>
+        <div><dt data-i18n="dash.recap.loans">Loan repayments</dt><dd id="dash-recap-loans"></dd></div>
+        <div><dt data-i18n="dash.recap.left">Left</dt><dd id="dash-recap-left"></dd></div>
+        <div><dt data-i18n="dash.recap.top">Biggest category</dt><dd id="dash-recap-top"></dd></div>
+        <div class="wide"><dt data-i18n="dash.recap.progress">Monthly saving target</dt><dd id="dash-recap-progress"></dd></div>
+      </dl>
+      <ul id="dash-recap-text" class="insight-notes"></ul>
+    </section>
+
+    <!-- 7. Savings jar -->
+    <section class="card stack" aria-labelledby="dash-jar-title">
+      <h2 id="dash-jar-title" data-i18n="dash.jar.title">Savings jar</h2>
+      <div id="dash-jar-empty" class="info-prompt" hidden>
+        <p data-i18n="targets.noGoalsPrompt">Create a savings goal to start tracking your progress.</p>
+        <div class="info-actions"><button id="dash-jar-new" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button></div>
+      </div>
+      <div id="dash-jar-body" class="stack">
+        <div id="dash-jar-goals" class="chips"></div>
+        <div class="jar-layout">
+          <div id="dash-jar" class="jar-box"></div>
+          <dl class="jar-facts">
+            <div><dt data-i18n="dash.jar.goal">Goal</dt><dd id="dash-jar-name"></dd></div>
+            <div><dt data-i18n="dash.jar.saved">Saved</dt><dd id="dash-jar-saved"></dd></div>
+            <div><dt data-i18n="dash.jar.target">Target</dt><dd id="dash-jar-target"></dd></div>
+            <div><dt data-i18n="dash.jar.remaining">Remaining</dt><dd id="dash-jar-remaining"></dd></div>
+            <div><dt data-i18n="dash.jar.percent">Done</dt><dd id="dash-jar-percent"></dd></div>
+          </dl>
+        </div>
+        <p id="dash-jar-message" class="muted"></p>
+      </div>
+    </section>
+
+    <!-- 8. Weekly budget + badges -->
+    <section class="card stack" aria-labelledby="dash-week-title">
+      <h2 id="dash-week-title" data-i18n="dash.week.title">Weekly budget &amp; badges</h2>
+      <form id="dash-week-form" class="week-form" novalidate>
+        <label><span data-i18n="dash.week.label">My spending budget per week (Rs)</span>
+          <input id="dash-week-input" type="number" inputmode="decimal" min="1" step="any"></label>
+        <div class="info-actions">
+          <button class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
+          <button id="dash-week-remove" class="link-btn" type="button" data-i18n="dash.week.remove" hidden>Remove</button>
+        </div>
+        <p id="dash-week-error" class="message error" role="alert"></p>
+      </form>
+      <p id="dash-week-note" class="muted"></p>
+      <div id="dash-week-body" class="stack">
+        <div class="bar"><span id="dash-week-bar"></span></div>
+        <p id="dash-week-text" class="item-name"></p>
+        <p id="dash-week-days" class="muted small"></p>
+        <ul id="dash-week-history" class="insight-notes"></ul>
+      </div>
+      <p class="small-title" data-i18n="dash.badge.title">Badges</p>
+      <ul id="dash-badges" class="badge-list"></ul>
+      <p class="muted small" data-i18n="dash.week.rule">Weeks run Monday to Sunday. A week counts when you stayed within budget and recorded spending on at least 3 days (an empty week isn't proof). Badges you earn are kept.</p>
+    </section>
+  </main>
+
+  <main id="page-money" class="page" hidden>
     <header class="page-head">
       <h1 data-i18n="nav.money">Money</h1>
       <div class="head-actions"><select class="lang-select" data-lang-switch data-i18n-aria="lang.choose" aria-label="Language"></select><button class="link-btn logout-btn" type="button" data-i18n="nav.logOut">Log out</button></div>
@@ -38,18 +208,20 @@
       <div>
         <p class="label" data-i18n="money.leftToSpend">Left to spend this month</p>
         <p id="left-to-spend" class="big-number">…</p>
+        <p id="left-note" class="muted" data-i18n="money.leftUnknown" hidden>Add your income and expenses to see this.</p>
       </div>
       <div class="stats">
         <div class="stat"><p class="label" data-i18n="money.in">In</p><p id="sum-in" class="value in"></p></div>
         <div class="stat"><p class="label" data-i18n="money.out">Out</p><p id="sum-out" class="value out"></p></div>
         <div class="stat"><p class="label" data-i18n="money.saved">Saved</p><p id="sum-saved" class="value saved"></p></div>
       </div>
-      <div class="split-bar" aria-hidden="true">
+      <div id="split-bar" class="split-bar" aria-hidden="true">
         <span id="split-needs" class="split-needs"></span>
         <span id="split-wants" class="split-wants"></span>
         <span id="split-savings" class="split-savings"></span>
       </div>
       <p id="split-legend" class="split-legend"></p>
+      <div id="money-prompts" class="stack"></div> <!-- only shown for information the user hasn't given -->
     </section>
 
     <!-- Money in / Money out switch -->
@@ -76,6 +248,7 @@
           <p class="small-title" data-i18n="money.quickAdd">Quick add</p>
           <div id="quick-chips" class="chips"></div>
         </div>
+        <p id="spend-empty" class="muted" data-i18n="money.prompt.expenses" hidden>Start recording your expenses to see your spending breakdown.</p>
         <div id="category-rows" class="cat-rows"></div>
       </section>
 
@@ -115,6 +288,25 @@
 
       <p class="tip" data-i18n="income.tip">💡 You only add regular income once. After that it's added every month.</p>
     </div>
+
+    <!-- Financial insights: 50/30/20 check-up (plain maths) + saved AI analysis. Groq only on the button. -->
+    <section id="insights-card" class="card stack" aria-labelledby="insights-title">
+      <div class="card-head">
+        <h2 id="insights-title" data-i18n="insights.title">Financial insights</h2>
+        <span id="insights-date" class="muted"></span>
+      </div>
+      <p class="small-title" data-i18n="insights.splitTitle">Your month vs the 50 · 30 · 20 guide</p>
+      <div id="insights-split" class="split-table"></div>
+      <ul id="insights-notes" class="insight-notes"></ul>
+      <p id="insights-gaps" class="muted"></p>
+      <p id="insights-goals-title" class="small-title" data-i18n="insights.goalsTitle" hidden>Savings goals</p>
+      <ul id="insights-goals" class="insight-goals"></ul>
+      <p class="small-title" data-i18n="insights.aiTitle">AI suggestions</p>
+      <div id="insights-ai" class="stack"></div>
+      <button id="insights-btn" class="btn" type="button" data-i18n="insights.generate">Generate Financial Insights</button>
+      <p id="insights-status" class="muted" role="status" aria-live="polite"></p>
+      <p class="muted" data-i18n="insights.disclaimer">Educational guidance only, not financial advice. AI text is in English.</p>
+    </section>
   </main>
 
   <!-- ===================== TAB 2: TARGETS ===================== -->
@@ -164,6 +356,7 @@
       <button id="new-goal-btn" class="btn btn-small" type="button" data-i18n="targets.newGoalButton">+ New goal</button>
     </div>
     <p id="goals-warning" class="warning-box" role="alert" hidden></p>
+    <div id="savings-prompt"></div> <!-- "Create a savings goal…" / "I'm not saving right now" -->
     <div id="goal-list" class="stack"></div>
   </main>
 
@@ -174,7 +367,14 @@
     <!-- Section 1: repayment calculator -->
     <section class="card">
       <h2 data-i18n="loan.currentTitle">My current loan</h2>
+      <div id="my-loans" class="stack">
+        <p id="my-loans-title" class="small-title" data-i18n="loan.saved.title" hidden>Saved loans</p>
+        <ul id="my-loans-list" class="item-list"></ul>
+        <button id="repay-new" class="link-btn" type="button" data-i18n="loan.addAnother" hidden>+ Add another loan</button>
+        <div id="my-loans-prompt"></div>
+      </div>
       <form id="repay-form" class="loan-form" novalidate>
+        <label><span data-i18n="loan.label.name">Loan name (optional)</span> <input id="repay-name" type="text" maxlength="60" autocomplete="off"></label>
         <label><span data-i18n="loan.label.balance">Loan amount remaining (Rs)</span> <input id="repay-balance" type="number" inputmode="decimal" min="0" step="any"></label>
         <label><span data-i18n="loan.label.rate">Interest rate (% a year)</span> <input id="repay-rate" type="number" inputmode="decimal" min="0" step="any"></label>
         <label><span data-i18n="loan.label.payment">Monthly repayment (Rs)</span> <input id="repay-payment" type="number" inputmode="decimal" min="0" step="any"></label>
@@ -197,6 +397,8 @@
           <div class="chart-box"><canvas id="repay-chart" aria-label="Remaining balance over time" data-i18n-aria="loan.chart.balanceAria"></canvas></div>
           <div class="chart-box chart-small"><canvas id="split-chart" aria-label="Interest vs amount borrowed" data-i18n-aria="loan.chart.splitAria"></canvas></div>
           <p class="muted small chart-offline" hidden data-i18n="loan.chartsOffline">Graphs need an internet connection.</p>
+          <button id="repay-save" class="btn btn-secondary" type="button" data-i18n="loan.save">Save this loan</button>
+          <p class="muted small" data-i18n="loan.saveNote">Optional: saving it lets the insights include your repayments.</p>
         </div>
       </div>
     </section>
@@ -326,7 +528,13 @@
 
   <!-- ===================== BOTTOM TAB BAR ===================== -->
   <nav class="tabbar" aria-label="Tabs" data-i18n-aria="nav.tabs">
-    <button class="active" type="button" data-page="money" aria-current="page">
+    <button class="active" type="button" data-page="dashboard" aria-current="page">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
+        <rect x="3" y="3" width="7.5" height="9" rx="2"/><rect x="13.5" y="3" width="7.5" height="5" rx="2"/><rect x="13.5" y="11" width="7.5" height="10" rx="2"/><rect x="3" y="15" width="7.5" height="6" rx="2"/>
+      </svg>
+      <span data-i18n="nav.home">Home</span>
+    </button>
+    <button type="button" data-page="money">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true">
         <rect x="3" y="6" width="18" height="13" rx="3"/><path d="M16 12.5h2M3 10h18"/>
       </svg>
@@ -633,11 +841,14 @@
   <script src="budget-calc.js"></script>
   <script src="money-tab.js"></script>
   <script src="targets-tab.js"></script>
+  <script src="insights.js"></script> <!-- needs STATUS_KEYS from targets-tab.js -->
   <!-- Chart.js (pinned version) for the Loans graphs. Offline it just doesn't load and the graphs are hidden. -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script src="loan-calc.js"></script>
   <script src="loans-tab.js"></script>
   <script src="game-calc.js"></script>
   <script src="arcade-tab.js"></script>
+  <script src="jar-calc.js"></script> <!-- coin positions for the savings jar -->
+  <script src="dashboard.js"></script> <!-- needs drawLoanChart (loans-tab.js), JarCalc, STATUS_KEYS -->
 </body>
 </html>

@@ -30,7 +30,7 @@ def api_routes():
 
 def fill_path(path, value):
     return (path.replace("{expense_id}", value).replace("{income_id}", value).replace("{goal_id}", value)
-            .replace("{attempt_id}", value))
+            .replace("{attempt_id}", value).replace("{loan_id}", value))
 
 
 def body_fields(route):

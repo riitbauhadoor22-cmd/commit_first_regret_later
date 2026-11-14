@@ -41,8 +41,8 @@ def test_other_user_sees_nothing(two_users):
     assert ben.get("/api/goals").json()["goals"] == []
     assert ben.get("/api/expenses/quick").json() == []
     summary = ben.get("/api/summary").json()
-    assert (summary["spent"], summary["income"], summary["saved"]) == (0, 0, 0)
-    assert ben.get("/api/savings").json()["bank_balance"] == 0
+    assert (summary["spent"], summary["income"], summary["saved"]) == (None, None, None)  # nothing given yet
+    assert ben.get("/api/savings").json()["bank_balance"] is None
 
 
 def test_other_user_cannot_edit_or_delete(two_users):
