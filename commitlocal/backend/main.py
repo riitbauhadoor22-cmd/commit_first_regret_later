@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from database import create_tables
@@ -26,6 +27,7 @@ from services.ai_insights import log_ai_status
 from services.inflation import load_cpi
 
 app = FastAPI(title="Finance PWA")
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # compress pages/scripts: much faster on slow phones and links
 add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
 log_ai_status()  # "AI insights: ON / OFF" in the server log (the key itself is never logged)
