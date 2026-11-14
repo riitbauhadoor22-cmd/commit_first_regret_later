@@ -19,3 +19,6 @@ backend/DATA/lending_club/
 smart_features_proposal.txt
 # Reference screenshots of other apps (third-party images)
 designs/
+
+# Internal build notes - kept on the computer, not on GitHub
+PROGRAM_STRUCTURE.md
