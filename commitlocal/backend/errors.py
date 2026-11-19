@@ -33,7 +33,7 @@ FIELD_CODES = {
     "balance": "INVALID_AMOUNT", "monthly_payment": "INVALID_AMOUNT", "annual_rate": "INVALID_RATE",  # saved loans
     "topic": "INVALID_INPUT", "none": "INVALID_INPUT",  # "I have none" choices
     "today": "INVALID_DATE",  # dashboard: the phone's date
-    "username": "INVALID_USERNAME", "phone": "INVALID_PHONE", "occupation": "INVALID_OCCUPATION",  # registration + Profile
+    "username": "INVALID_USERNAME", "occupation": "INVALID_OCCUPATION",  # registration + Profile
     "current_password": "INVALID_PASSWORD", "new_password": "INVALID_PASSWORD",  # Profile: change password / email
 }
 

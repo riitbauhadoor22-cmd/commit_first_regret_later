@@ -1,12 +1,9 @@
 # routes/profile.py — the Profile tab's "My account" part. Every route works on the LOGGED-IN user only
 # (the id comes from the session cookie via require_user, never from the browser).
-#   GET /api/profile             → {full_name, username, email, phone, occupation}  (NEVER the password or its hash)
+#   GET /api/profile             → {full_name, username, email, occupation}  (NEVER the password or its hash)
 #   PUT /api/profile/name        → {full_name}                     optional (old clients only; the app no longer shows it)
 #   PUT /api/profile/username    → {username}                      3–30 letters/numbers/. _ -, lowercase, unique
-#   PUT /api/profile/email       → {email, current_password}       lowercase, unique, needs the current password;
-#                                  empty = remove (only while a phone number is left)
-#   PUT /api/profile/phone       → {phone, current_password}       Mauritius number (+230…), unique, needs the password;
-#                                  empty = remove (only while an email is left). Both can't be removed.
+#   PUT /api/profile/email       → {email, current_password}       lowercase, unique, needs the current password
 #   PUT /api/profile/occupation  → {occupation}                    free text up to 60 characters or empty (= remove)
 #   PUT /api/profile/password    → {current_password, new_password, confirm_password}  same rules as registration;
 #                                  other logged-in devices are logged out, this one stays logged in
@@ -18,9 +15,9 @@ from sqlalchemy.exc import IntegrityError
 
 from database import open_db
 from errors import AppError
-from models import (ChangeEmailForm, ChangePasswordForm, LoginSession, NameForm, OccupationForm, PhoneForm, Profile,
+from models import (ChangeEmailForm, ChangePasswordForm, LoginSession, NameForm, OccupationForm, Profile,
                     User, UsernameForm)
-from routes.auth import COOKIE_NAME, find_user, find_user_by_phone, find_user_by_username, require_user
+from routes.auth import COOKIE_NAME, find_user, find_user_by_username, require_user
 from security import get_password_problems, hash_password, hash_text, password_matches
 
 router = APIRouter(prefix="/api/profile")
@@ -40,13 +37,7 @@ def load_account(db, user_id):
 def profile_reply(user, profile):
     """What the Profile tab shows. The password and its hash are never part of it."""
     return {"full_name": profile.full_name or "", "username": user.username, "email": user.email,
-            "phone": profile.phone, "occupation": profile.occupation}
-
-
-def keep_one_contact(email, phone):
-    """An account always keeps an email or a phone number (they are how the user logs in)."""
-    if not email and not phone:
-        raise AppError(400, "NEED_EMAIL_OR_PHONE", "Keep an email or a phone number: you need one to log in.")
+            "occupation": profile.occupation}
 
 
 def save_unique(db, code, message):
@@ -95,30 +86,15 @@ def change_username(form: UsernameForm, user_id: uuid.UUID = Depends(require_use
 @router.put("/email")
 def change_email(form: ChangeEmailForm, user_id: uuid.UUID = Depends(require_user)):
     """The next login code goes to the new address, so logging in again proves the user can read it."""
-    email = form.email  # already lowercase (models.py), or None = remove
+    email = form.email  # already lowercase (models.py)
     with open_db() as db:
         user, profile = load_account(db, user_id)
         require_current_password(user, form.current_password)
-        keep_one_contact(email, profile.phone)
-        owner = find_user(db, email) if email else None
+        owner = find_user(db, email)
         if owner is not None and owner.id != user.id:
             raise AppError(409, "EMAIL_IN_USE", "This email is already used by another account.")
         user.email = email
         save_unique(db, "EMAIL_IN_USE", "This email is already used by another account.")
-        return profile_reply(user, profile)
-
-
-@router.put("/phone")
-def change_phone(form: PhoneForm, user_id: uuid.UUID = Depends(require_user)):
-    with open_db() as db:
-        user, profile = load_account(db, user_id)
-        require_current_password(user, form.current_password)
-        keep_one_contact(user.email, form.phone)
-        owner = find_user_by_phone(db, form.phone) if form.phone else None
-        if owner is not None and owner.id != user.id:
-            raise AppError(409, "PHONE_TAKEN", "An account with this phone number already exists.")
-        profile.phone = form.phone  # "+230XXXXXXXX" or None (removed)
-        save_unique(db, "PHONE_TAKEN", "An account with this phone number already exists.")
         return profile_reply(user, profile)
 
 

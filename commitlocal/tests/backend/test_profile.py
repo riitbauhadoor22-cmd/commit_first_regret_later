@@ -1,5 +1,5 @@
 # test_profile.py — the Profile tab's account routes (/api/profile...): each user only ever sees and changes their OWN
-# account (no route takes a user id), name / username / email / phone / occupation / password rules, and the password
+# account (no route takes a user id), name / username / email / occupation / password rules, and the password
 # hash never appears in any reply of /api/auth/* or /api/profile*.
 import pytest
 from sqlalchemy import select
@@ -35,7 +35,7 @@ def two_users(new_client, sent_codes):
 def test_get_profile_shows_own_details_only(two_users):
     asha, bob = two_users
     assert profile(asha) == {"full_name": "Asha", "username": username_for("asha@example.com"),
-                             "email": "asha@example.com", "phone": None, "occupation": None}
+                             "email": "asha@example.com", "occupation": None}
     assert profile(bob)["email"] == "bob@example.com" and profile(bob)["username"] == username_for("bob@example.com")
 
 
@@ -102,43 +102,20 @@ def test_change_email_already_used(two_users):  # someone else's email, also in 
     assert profile(asha)["email"] == "asha@example.com" and profile(bob)["email"] == "bob@example.com"
 
 
-# ===== PHONE + OCCUPATION =====
-def put_phone(client, phone, password=PASSWORD):
-    return client.put("/api/profile/phone", json={"phone": phone, "current_password": password})
-
-
+# ===== EMAIL REQUIRED + OCCUPATION =====
 def put_email(client, email, password=PASSWORD):
     return client.put("/api/profile/email", json={"email": email, "current_password": password})
 
 
-def test_phone_set_normalise_and_remove(logged_in):  # needs the current password (the phone can be a login)
-    assert put_phone(logged_in, "+230 5123-4567").json()["phone"] == "+23051234567"
-    res = put_phone(logged_in, "12")
-    assert res.status_code == 422 and res.json()["code"] == "INVALID_PHONE"
-    assert put_phone(logged_in, "52223333", "Wrong!Pass1").json()["code"] == "WRONG_PASSWORD"
-    assert logged_in.put("/api/profile/phone", json={"phone": "52223333"}).status_code == 422  # no password
-    assert profile(logged_in)["phone"] == "+23051234567"
-    assert put_phone(logged_in, "").json()["phone"] is None
-    assert put_phone(logged_in, None).json()["phone"] is None
+def test_email_cannot_be_removed(logged_in):  # the email is how the user logs in -> 422, nothing changes
+    for empty in ["", None]:
+        assert put_email(logged_in, empty).status_code == 422
+    assert profile(logged_in)["email"] == "asha@example.com"
 
 
-def test_phone_taken_by_someone_else(two_users):  # two accounts can't share a phone -> 409 PHONE_TAKEN
-    asha, bob = two_users
-    assert put_phone(asha, "51234567").status_code == 200
-    res = put_phone(bob, "+230 5123 4567")
-    assert res.status_code == 409 and res.json()["code"] == "PHONE_TAKEN"
-    assert put_phone(asha, "5123-4567").status_code == 200  # own number again is fine
-    assert profile(bob)["phone"] is None
-
-
-def test_cannot_remove_both_email_and_phone(logged_in):  # one of them must stay (it is how the user logs in)
-    res = put_email(logged_in, "")
-    assert res.status_code == 400 and res.json()["code"] == "NEED_EMAIL_OR_PHONE"
-    assert put_phone(logged_in, "51234567").status_code == 200
-    assert put_email(logged_in, "").json()["email"] is None  # phone left: the email may go
-    res = put_phone(logged_in, "")
-    assert res.status_code == 400 and res.json()["code"] == "NEED_EMAIL_OR_PHONE"
-    assert profile(logged_in)["phone"] == "+23051234567"
+def test_phone_route_is_gone(logged_in):
+    res = logged_in.put("/api/profile/phone", json={"phone": "51234567", "current_password": PASSWORD})
+    assert res.status_code in (404, 405)
 
 
 def test_occupation_set_and_clear(logged_in):
@@ -153,11 +130,10 @@ def test_occupation_set_and_clear(logged_in):
 def test_changes_never_touch_the_other_user(two_users):  # routes take no user id: Bob's edits only change Bob
     asha, bob = two_users
     bob.put("/api/profile/name", json={"full_name": "Bob"})
-    put_phone(bob, "52223333")
     bob.put("/api/profile/occupation", json={"occupation": "Employed"})
     bob.put("/api/profile/username", json={"username": "bob_b"})
     assert profile(asha) == {"full_name": "Asha", "username": username_for("asha@example.com"),
-                             "email": "asha@example.com", "phone": None, "occupation": None}
+                             "email": "asha@example.com", "occupation": None}
     me = bob.get("/api/auth/me").json()
     assert me["username"] == "bob_b" and me["email"] == "bob@example.com"
     assert "asha" not in bob.get("/api/profile").text
@@ -197,7 +173,7 @@ def test_password_change_success(new_client, sent_codes):  # new one works, old 
 def test_no_reply_contains_the_password_hash(new_client, sent_codes):
     client = new_client()
     replies = [client.post("/api/auth/register", json={"full_name": "Asha", "username": "asha_k",
-                                                       "email": "asha@example.com", "phone": "51234567",
+                                                       "email": "asha@example.com",
                                                        "password": PASSWORD, "confirm_password": PASSWORD}),
                client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})]
     replies.append(client.post("/api/auth/verify-code", json={"email": "asha@example.com", "code": sent_codes[-1]}))
@@ -205,7 +181,6 @@ def test_no_reply_contains_the_password_hash(new_client, sent_codes):
                 client.get("/api/profile"),
                 client.put("/api/profile/name", json={"full_name": "Asha K"}),
                 client.put("/api/profile/username", json={"username": "asha_kk"}),
-                put_phone(client, "52223333"),
                 client.put("/api/profile/occupation", json={"occupation": "Student"}),
                 client.put("/api/profile/email", json={"email": "asha2@example.com", "current_password": PASSWORD}),
                 client.put("/api/profile/email", json={"email": "x@example.com", "current_password": "Wrong!1aa"}),

@@ -39,7 +39,7 @@
 
     <!-- LOGIN FORM -->
     <form id="login-form">
-      <label><span data-i18n="login.emailOrPhone">Email or phone number</span> <input id="login-email" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label><span data-i18n="login.email">Email</span> <input id="login-email" type="email" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
       <label><span data-i18n="login.password">Password</span> <input id="login-password" type="password" autocomplete="current-password" required></label>
       <button class="btn" type="submit" data-i18n="login.logIn">Log in</button>
       <!-- Shown after registering (when the Register tab is hidden) -->
@@ -56,9 +56,7 @@
     <form id="register-form" hidden>
       <label><span data-i18n="login.username">Username</span> <input id="reg-username" type="text" autocomplete="username" autocapitalize="none" spellcheck="false" maxlength="30" required aria-describedby="reg-username-hint"></label>
       <p id="reg-username-hint" class="muted small" data-i18n="login.usernameHint">3–30 letters, numbers, dots, underscores or hyphens.</p>
-      <label><span data-i18n="login.emailOptional">Email</span> <input id="reg-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false"></label>
-      <label><span data-i18n="login.phoneOptional">Phone number</span> <input id="reg-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+230 5123 4567" aria-describedby="reg-contact-hint"></label>
-      <p id="reg-contact-hint" class="muted small" data-i18n="login.contactHint">Give an email, a phone number, or both. Login codes are sent by email (codes by phone are coming later).</p>
+      <label><span data-i18n="login.email">Email</span> <input id="reg-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" required></label>
       <label><span data-i18n="login.password">Password</span> <input id="reg-password" type="password" autocomplete="new-password" required></label>
 
       <div class="meter" aria-hidden="true"><div id="meter-bar"></div></div>
@@ -75,9 +73,13 @@
       <button class="btn" type="submit" data-i18n="login.createAccount">Create account</button>
     </form>
 
-    <!-- ENTER THE EMAILED CODE -->
+    <!-- ENTER THE CODE (sent by email) -->
     <form id="code-form" hidden>
-      <p data-i18n="login.enterCode">Enter the 6-digit code we sent you (by email or WhatsApp).</p>
+      <p data-i18n="login.enterCode">Enter the 6-digit code we emailed you.</p>
+      <!-- "Code sent to a•••@gmail.com" (filled by login.js from the backend's masked "sent_to") -->
+      <p id="code-sent-to" class="code-sent-to" hidden></p>
+      <!-- Only when backend/.env has DEMO_SHOW_OTP=true (never in the real app) -->
+      <p id="demo-code-box" class="warning-box demo-code-box" role="note" hidden></p>
       <label><span data-i18n="login.code">Code</span>
         <input id="code-input" class="code-input" inputmode="numeric" autocomplete="one-time-code"
                maxlength="6" pattern="[0-9]{6}" required>

@@ -15,6 +15,8 @@ os.environ["APP_ENV"] = "development"  # tests that need production switch it wi
 # Groq: a fake key and fixed limits, set BEFORE backend/.env is read (real .env values never apply in tests)
 os.environ.update({"GROQ_API_KEY": "test-key", "GROQ_MODEL": "", "AI_DAILY_LIMIT": "5", "AI_COOLDOWN_SECONDS": "60",
                    "AI_MAX_OUTPUT_TOKENS": "1000", "AI_MAX_INPUT_CHARS": "6000", "AI_TIMEOUT_SECONDS": "25"})
+# Demo mode off, also set BEFORE backend/.env is read; tests turn it on with monkeypatch
+os.environ["DEMO_SHOW_OTP"] = "false"
 
 import database  # noqa: E402
 import security  # noqa: E402
@@ -55,13 +57,24 @@ def client(new_client):
     return new_client()
 
 
+class SentCodes(list):
+    """The codes that would have been sent (a list), plus .where: ("email", address) for each one."""
+
+    def __init__(self):
+        super().__init__()
+        self.where = []
+
+    def add(self, channel, address, code):
+        self.append(code)
+        self.where.append((channel, address))
+
+
 @pytest.fixture
 def sent_codes(monkeypatch):
-    """Replaces the real Gmail sender: codes are stored in this list instead of emailed."""
+    """Replaces the real Gmail sender: codes are stored in this list instead of sent."""
     import routes.auth
-    codes = []
-    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.append(code))
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: codes.append(code))  # WhatsApp too
+    codes = SentCodes()
+    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: codes.add("email", email, code))
     return codes
 
 

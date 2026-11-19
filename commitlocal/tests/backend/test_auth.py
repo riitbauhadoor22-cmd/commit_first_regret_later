@@ -1,4 +1,5 @@
-# test_auth.py — register, log in, /api/auth/me, and email sending (always faked: no real email is ever sent).
+# test_auth.py — register, log in, /api/auth/me, where the code goes, the hourly code cap,
+# demo mode, and sending (always faked: no real email is ever sent).
 import smtplib
 
 import pytest
@@ -139,39 +140,21 @@ def test_routes_use_the_mocked_sender(sent_codes):  # the fixture really replace
     assert routes.auth.send_otp_email is not email_sender.send_otp_email
 
 
-# ===== USERNAME + PHONE AT REGISTRATION =====
-def saved_account(email="asha@example.com"):
-    """(username, phone) as stored in the database."""
+# ===== USERNAME AT REGISTRATION =====
+def saved_username(email="asha@example.com"):
     with database.open_db() as db:
-        user = db.scalar(select(User).where(User.email == email))
-        profile = db.scalar(select(Profile).where(Profile.user_id == user.id))
-        return user.username, profile.phone
+        return db.scalar(select(User.username).where(User.email == email))
 
 
-def test_register_with_username_and_phone(client):  # both saved: username lowercase, phone as +230XXXXXXXX
-    res = client.post(REGISTER, json=form(username="  Asha_K  ", phone="5123 4567"))
-    assert res.status_code == 201
-    assert saved_account() == ("asha_k", "+23051234567")
+def test_register_username_is_lowercase(client):  # saved trimmed + lowercase
+    assert client.post(REGISTER, json=form(username="  Asha_K  ")).status_code == 201
+    assert saved_username() == "asha_k"
 
 
-def test_register_without_phone(client):  # the phone number is optional (missing or empty)
-    assert client.post(REGISTER, json=form()).status_code == 201
-    assert client.post(REGISTER, json=form(email="b@example.com", username="bobby", phone="")).status_code == 201
-    assert saved_account()[1] is None and saved_account("b@example.com")[1] is None
-
-
-@pytest.mark.parametrize("phone, saved", [("+230 5123 4567", "+23051234567"), ("+230-212-3456", "+2302123456"),
-                                          ("2123456", "+2302123456"), ("51234567", "+23051234567")])
-def test_register_phone_is_normalised(client, phone, saved):  # spaces / dashes removed, +230 added
-    assert client.post(REGISTER, json=form(phone=phone)).status_code == 201
-    assert saved_account()[1] == saved
-
-
-@pytest.mark.parametrize("phone", ["12345", "61234567", "+44 7700 900123", "abcdefg", "+230 5123 45678", "5123456a"])
-def test_register_invalid_phone(client, phone):  # not a Mauritius number -> 422 INVALID_PHONE, nothing saved
-    res = client.post(REGISTER, json=form(phone=phone))
-    assert res.status_code == 422 and res.json()["code"] == "INVALID_PHONE"
-    assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 401
+def test_register_ignores_a_phone_number(client):  # phone numbers are no longer taken: an old client's is not saved
+    assert client.post(REGISTER, json=form(phone="5123 4567")).status_code == 201
+    with database.open_db() as db:
+        assert db.scalar(select(Profile.phone)) is None
 
 
 @pytest.mark.parametrize("username", ["", "ab", "a" * 31, "asha k", "asha@k", "ásha", "   "])
@@ -186,86 +169,121 @@ def test_register_duplicate_username_any_case(client):  # same username (other c
     assert res.status_code == 409 and res.json()["code"] == "USERNAME_TAKEN"
 
 
-# ===== EMAIL OR PHONE (at least one) =====
-def phone_only(**changes):
-    body = form(email=None, phone="5123 4567", **changes)
-    del body["email"]
-    return body
+@pytest.mark.parametrize("email", [None, "", "  "])
+def test_register_needs_an_email(client, email):  # the email is how the user logs in -> 422
+    assert client.post(REGISTER, json=form(email=email)).status_code == 422
 
 
-def test_register_email_only_phone_only_or_both(client):
-    assert client.post(REGISTER, json=form()).status_code == 201
-    assert client.post(REGISTER, json=phone_only(username="phone_only")).status_code == 201
-    assert client.post(REGISTER, json=form(email="both@example.com", username="both", phone="52223333")).status_code == 201
-    with database.open_db() as db:
-        user = db.scalar(select(User).where(User.username == "phone_only"))
-        assert user.email is None
-        assert db.scalar(select(Profile.phone).where(Profile.user_id == user.id)) == "+23051234567"
+# ===== WHERE THE CODE GOES =====
+def test_code_is_emailed_with_masked_address(client, sent_codes):
+    register(client)
+    body = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).json()
+    assert sent_codes.where == [("email", "asha@example.com")]
+    assert body["code"] == "CODE_SENT" and body["sent_to"] == "a•••@example.com" and "channel" not in body
 
 
-@pytest.mark.parametrize("email, phone", [(None, None), ("", ""), ("  ", None)])
-def test_register_needs_email_or_phone(client, email, phone):  # neither -> 422 EMAIL_OR_PHONE_REQUIRED
-    res = client.post(REGISTER, json=form(email=email, phone=phone))
-    assert res.status_code == 422 and res.json()["code"] == "EMAIL_OR_PHONE_REQUIRED"
+def test_wrong_password_reveals_no_address(client, sent_codes):
+    register(client)
+    body = client.post("/api/auth/login", json={"email": "asha@example.com", "password": "Wrong!Pass1"}).json()
+    assert "sent_to" not in body and sent_codes == []
 
 
-def test_register_duplicate_phone(client):  # same number written differently -> 409 PHONE_TAKEN
-    assert client.post(REGISTER, json=form(phone="51234567")).status_code == 201
-    res = client.post(REGISTER, json=form(email="b@example.com", username="bobby", phone="+230 5123-4567"))
-    assert res.status_code == 409 and res.json()["code"] == "PHONE_TAKEN"
-
-
-def test_login_with_phone_sends_the_code_by_email(client, sent_codes):  # an account with both: phone works as login
-    client.post(REGISTER, json=form(phone="51234567"))
-    res = client.post("/api/auth/login", json={"email": "5123 4567", "password": PASSWORD})
-    assert res.status_code == 200 and res.json()["code"] == "CODE_SENT" and len(sent_codes) == 1
-    res = client.post("/api/auth/verify-code", json={"email": "+23051234567", "code": sent_codes[-1]})
-    assert res.status_code == 200 and client.get("/api/auth/me").json()["username"] == "asha_k"
-
-
-def test_phone_only_login_sends_the_code_on_whatsapp(client, monkeypatch):  # no email -> WhatsApp (faked)
-    sent = []
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", lambda phone, code: sent.append((phone, code)))
-    monkeypatch.setattr(routes.auth, "send_otp_email", lambda email, code: pytest.fail("no email for this account"))
-    client.post(REGISTER, json=phone_only())
-    res = client.post("/api/auth/login", json={"email": "5123 4567", "password": PASSWORD})
-    assert res.status_code == 200 and res.json()["code"] == "CODE_SENT_WHATSAPP"
-    assert sent[-1][0] == "+23051234567" and len(sent[-1][1]) == 6
-    res = client.post("/api/auth/verify-code", json={"email": "+23051234567", "code": sent[-1][1]})
-    assert res.status_code == 200 and client.get("/api/auth/me").status_code == 200  # logged in
-
-
-def test_phone_only_resend_and_wrong_password(client, sent_codes):
-    client.post(REGISTER, json=phone_only())
-    res = client.post("/api/auth/login", json={"email": "51234567", "password": "Wrong!Pass1"})
-    assert res.status_code == 401 and sent_codes == []  # wrong password is still checked first
-    assert client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD}).status_code == 200
-    age_codes(31)  # pretend the 30-second resend wait is over
-    res = client.post("/api/auth/resend-code", json={"email": "51234567"})
-    assert res.status_code == 200 and res.json()["code"] == "CODE_RESENT_WHATSAPP" and len(sent_codes) == 2
-
-
-def test_phone_only_login_without_twilio_keys(client, monkeypatch):  # not set up -> friendly 503, no crash
-    def not_set_up(phone, code):
-        raise routes.auth.WhatsAppNotConfigured()
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", not_set_up)
-    client.post(REGISTER, json=phone_only())
-    res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
-    assert res.status_code == 503 and res.json()["code"] == "PHONE_CODE_NOT_AVAILABLE"
-
-
-def test_phone_only_login_when_whatsapp_fails(client, monkeypatch):  # e.g. the phone hasn't joined the sandbox
-    def fails(phone, code):
-        raise routes.auth.WhatsAppFailed()
-    monkeypatch.setattr(routes.auth, "send_otp_whatsapp", fails)
-    client.post(REGISTER, json=phone_only())
-    res = client.post("/api/auth/login", json={"email": "51234567", "password": PASSWORD})
-    assert res.status_code == 503 and res.json()["code"] == "WHATSAPP_FAILED"
+def test_email_failure_saves_nothing(client, monkeypatch):
+    def fail(email, code):
+        raise smtplib.SMTPException("down")
+    monkeypatch.setattr(routes.auth, "send_otp_email", fail)
+    register(client)
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    assert res.status_code == 503 and res.json()["code"] == "EMAIL_FAILED"
     with database.open_db() as db:  # the unsent code was not kept
         from models import OtpCode
         assert db.query(OtpCode).count() == 0
 
 
-def test_login_id_must_be_an_email_or_phone(client):
+# ===== CODES PER HOUR =====
+def test_sixth_code_in_an_hour_is_refused(client, sent_codes):
+    register(client)
+    for _ in range(5):
+        assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 200
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    assert res.status_code == 429 and res.json()["code"] == "TOO_MANY_CODES" and len(sent_codes) == 5
+    age_codes(31)
+    res = client.post("/api/auth/resend-code", json={"email": "asha@example.com"})
+    assert res.status_code == 429 and res.json()["code"] == "TOO_MANY_CODES"  # resend counts too
+    age_codes(60 * 60)  # an hour later: allowed again
+    assert client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).status_code == 200
+
+
+# ===== DEMO MODE =====
+def test_no_demo_code_by_default(client, sent_codes):
+    register(client)
+    login = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).json()
+    age_codes(31)
+    resend = client.post("/api/auth/resend-code", json={"email": "asha@example.com"}).json()
+    assert "demo_code" not in login and "demo_code" not in resend
+
+
+@pytest.mark.parametrize("value", ["false", "", "True", "yes"])
+def test_demo_mode_needs_exactly_true(client, sent_codes, monkeypatch, value):
+    monkeypatch.setenv("DEMO_SHOW_OTP", value)
+    register(client)
+    assert "demo_code" not in client.post("/api/auth/login", json={"email": "asha@example.com",
+                                                                   "password": PASSWORD}).json()
+
+
+def test_demo_mode_shows_the_sent_code_after_the_password(client, sent_codes, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")
+    register(client)
+    body = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD}).json()
+    assert body["demo_code"] == sent_codes[-1]
+    age_codes(31)
+    resend = client.post("/api/auth/resend-code", json={"email": "asha@example.com"}).json()  # no password: no code
+    assert resend["code"] == "CODE_RESENT" and "demo_code" not in resend
+
+
+def test_demo_mode_when_email_fails_saves_nothing(client, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")
+
+    def fail(email, code):
+        raise smtplib.SMTPException("down")
+    monkeypatch.setattr(routes.auth, "send_otp_email", fail)
+    register(client)
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    assert res.status_code == 503 and "demo_code" not in res.json()
+    with database.open_db() as db:
+        from models import OtpCode
+        assert db.query(OtpCode).count() == 0
+
+
+# ===== LOCKED ACCOUNT: SAME REPLY ALWAYS =====
+def lock(client, login_id):
+    for _ in range(3):
+        client.post("/api/auth/login", json={"email": login_id, "password": "Wrong!Pass1"})
+
+
+def test_send_login_code_reply_is_the_same_for_every_account(client, sent_codes, monkeypatch):
+    monkeypatch.setenv("DEMO_SHOW_OTP", "true")  # even in demo mode nothing extra is shown here
+    register(client)  # not locked
+    client.post(REGISTER, json=form(username="locked_one", email="locked@example.com"))
+    lock(client, "locked@example.com")
+    replies = [client.post("/api/auth/send-login-code", json={"email": login_id})
+               for login_id in ["nobody@example.com", "asha@example.com", "locked@example.com"]]
+    assert {res.status_code for res in replies} == {200}
+    assert len({res.text for res in replies}) == 1  # identical replies
+    assert set(replies[0].json()) == {"message", "code"}
+    assert sent_codes.where == [("email", "locked@example.com")]  # only the locked email account got a code
+
+
+def test_send_login_code_respects_the_hourly_cap(client, sent_codes):
+    register(client)
+    for _ in range(5):
+        client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    age_codes(31)
+    lock(client, "asha@example.com")
+    res = client.post("/api/auth/send-login-code", json={"email": "asha@example.com"})
+    assert res.status_code == 200 and res.json()["code"] == "LOCKED_CODE_SENT" and len(sent_codes) == 5  # not sent
+
+
+def test_login_id_must_be_an_email(client):
     res = client.post("/api/auth/login", json={"email": "hello", "password": PASSWORD})
     assert res.status_code == 422 and res.json()["code"] == "INVALID_EMAIL"

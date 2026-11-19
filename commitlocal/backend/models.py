@@ -4,7 +4,7 @@ import datetime
 import re
 from typing import Literal, Optional
 
-from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator, model_validator
+from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator
 
 from categories import CATEGORIES, GOAL_CPI_CATEGORIES, INCOME_TYPES
 
@@ -15,7 +15,6 @@ MAX_BALANCE = 1_000_000_000  # a bank BALANCE can be bigger than a monthly amoun
 # ===== LOGIN FORMS =====
 
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9._-]{3,30}$")  # 3–30 letters, digits, dot, underscore, hyphen
-PHONE_PATTERN = re.compile(r"^(\+230)?(5\d{7}|\d{7})$")       # Mauritius: mobile 5XXXXXXX or 7-digit landline
 
 
 def clean_username(value):
@@ -24,19 +23,6 @@ def clean_username(value):
     if not USERNAME_PATTERN.match(text):
         raise ValueError("A username has 3 to 30 letters, numbers, dots, underscores or hyphens.")
     return text.lower()
-
-
-def clean_phone(value):
-    """Mauritius phone number → "+230XXXXXXXX" (spaces / dashes removed); empty → None. Else ValueError (INVALID_PHONE)."""
-    if value is None:
-        return None
-    text = re.sub(r"[\s-]", "", str(value))
-    if text == "":
-        return None
-    match = PHONE_PATTERN.match(text)
-    if not match:
-        raise ValueError("Please enter a Mauritius phone number, e.g. +230 5123 4567.")
-    return "+230" + match.group(2)
 
 
 EMAIL_CHECK = TypeAdapter(EmailStr)
@@ -60,55 +46,39 @@ def clean_email(value):
         raise ValueError("Please enter a valid email address.")
 
 
-def clean_login_id(value):
-    """Login with an email OR a phone number: "Asha@X.com" → "asha@x.com", "5123 4567" → "+23051234567"."""
-    text = str(value).strip()
-    if "@" in text:
-        return clean_email(text)
-    phone = clean_phone(text)
-    if phone is None:
-        raise ValueError("Please enter your email or phone number.")
-    return phone
+def required_email(value):
+    """Like clean_email, but empty is not allowed (the email is how the user logs in)."""
+    email = clean_email(value)
+    if email is None:
+        raise ValueError("Please enter your email.")
+    return email
 
 
 class RegisterForm(BaseModel):
     full_name: Optional[str] = Field(default=None, max_length=100)  # optional: removed from the form, old clients may still send it
     username: str = Field(max_length=60)
-    email: Optional[str] = Field(default=None, max_length=254)  # email OR phone (or both) is required
-    phone: Optional[str] = Field(default=None, max_length=30)   # Mauritius format, saved as +230XXXXXXXX
+    email: str = Field(max_length=254)
     password: str = Field(max_length=200)
     confirm_password: str = Field(max_length=200)
 
     @field_validator("email")
     @classmethod
     def check_email(cls, value):
-        return clean_email(value)
-
-    @model_validator(mode="after")
-    def need_email_or_phone(self):
-        if self.email is None and self.phone is None:
-            raise CodedValueError("EMAIL_OR_PHONE_REQUIRED", "Please enter an email or a phone number (or both).")
-        return self
+        return required_email(value)
 
     @field_validator("username")
     @classmethod
     def check_username(cls, value):
         return clean_username(value)
 
-    @field_validator("phone")
-    @classmethod
-    def check_phone(cls, value):
-        return clean_phone(value)
 
-
-# "email" in the 3 login forms = the user's email OR phone number (the field keeps its old name, so old clients work)
 class LoginIdForm(BaseModel):
     email: str = Field(max_length=254)
 
     @field_validator("email")
     @classmethod
     def check_login_id(cls, value):
-        return clean_login_id(value)
+        return required_email(value)
 
 
 class LoginForm(LoginIdForm):
@@ -295,27 +265,17 @@ class UsernameForm(BaseModel):
 
 
 class ChangeEmailForm(BaseModel):
-    email: Optional[str] = Field(default=None, max_length=254)  # empty = remove (only if a phone number is left)
+    email: str = Field(max_length=254)
     current_password: str = Field(max_length=200)  # needed to change the email (security)
 
     @field_validator("email")
     @classmethod
     def check_email(cls, value):
-        return clean_email(value)
+        return required_email(value)
 
 
 class OccupationForm(BaseModel):
     occupation: Optional[str] = Field(default=None, max_length=60)  # empty = remove
-
-
-class PhoneForm(BaseModel):
-    phone: Optional[str] = Field(default=None, max_length=30)  # empty = remove (only if an email is left)
-    current_password: str = Field(max_length=200)  # the phone can be used to log in, so it needs the password
-
-    @field_validator("phone")
-    @classmethod
-    def check_phone(cls, value):
-        return clean_phone(value)
 
 
 class ChangePasswordForm(BaseModel):
@@ -391,7 +351,7 @@ class User(Base):
     """Login data only."""
     __tablename__ = "users"
     id = id_column()
-    email = mapped_column(sa.String(254), nullable=True, unique=True)    # always lowercase; empty = phone-only account
+    email = mapped_column(sa.String(254), nullable=True, unique=True)    # always lowercase
     username = mapped_column(sa.String(30), nullable=True, unique=True)  # always lowercase; empty for old accounts
     password_hash = mapped_column(sa.String(100), nullable=False)        # bcrypt, never the real password
     failed_attempts = mapped_column(sa.Integer, nullable=False, default=0)
@@ -409,7 +369,7 @@ class Profile(Base):
     user_id = user_id_column(unique=True)  # one profile per user
     full_name = mapped_column(sa.String(100), nullable=True)  # optional since migration 0009 (username is shown instead)
     date_of_birth = mapped_column(sa.Date, nullable=True)
-    phone = mapped_column(sa.String(20), nullable=True, unique=True)  # "+230XXXXXXXX", unique; can be used to log in
+    phone = mapped_column(sa.String(20), nullable=True, unique=True)  # no longer used (phone login removed); kept so no data is deleted
     language = mapped_column(sa.String(3), nullable=True)  # en / fr / mfe, null = never chosen
     occupation = mapped_column(sa.String(60), nullable=True)  # optional (Profile tab), null = not added
     updated_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, onupdate=utc_now)

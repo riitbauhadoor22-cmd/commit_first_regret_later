@@ -1,6 +1,7 @@
-# routes/auth.py — register (name, username, email and/or phone, password), log in (email OR phone + password, then a
-# 6-digit code sent by deliver_login_code: by email when the account has one, otherwise by WhatsApp through the
-# Twilio sandbox, whatsapp_sender.py), unlock a locked account, log out. The username is never used to log in.
+# routes/auth.py — register (name, username, email, password), log in (email + password, then a 6-digit code
+# emailed by deliver_login_code / email_sender.py), unlock a locked account, log out.
+# The username is never used to log in. No code is sent at registration.
+import os
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Request, Response
@@ -11,7 +12,6 @@ from config import is_production
 from database import open_db
 from errors import AppError
 from email_sender import send_otp_email
-from whatsapp_sender import WhatsAppFailed, WhatsAppNotConfigured, send_otp_whatsapp
 from models import CodeForm, EmailForm, LanguageForm, LoginForm, LoginSession, OtpCode, Profile, RegisterForm, User, utc_now
 from security import (get_password_problems, hash_password, hash_text, make_otp, make_session_token,
                       password_matches, same_hash, waste_password_check)
@@ -24,6 +24,7 @@ MAX_CODE_TRIES_PER_HOUR = 15       # wrong guesses allowed over all codes (new c
 CODE_LIFETIME = timedelta(minutes=5)
 RESEND_WAIT = timedelta(seconds=30)  # before a new code can be sent
 RESEND_WINDOW = timedelta(minutes=30)  # "Resend" only works if a code was sent this recently
+MAX_CODES_PER_HOUR = 5             # codes sent per account per rolling hour
 SESSION_LIFETIME = timedelta(days=7)  # stay logged in for 7 days
 COOKIE_NAME = "session"
 # Rate limits (rate_limit.py, in memory): (most requests, per this many seconds)
@@ -39,16 +40,8 @@ LOCKED_MESSAGE = "Your account is locked after 3 wrong passwords. Tap 'Send me a
 
 
 # ===== HELPERS =====
-def find_user(db, login_id):
-    """The account for an email ("asha@x.com") or a normalised phone number ("+2305…"), or None."""
-    login_id = login_id.strip().lower()
-    if "@" in login_id:
-        return db.scalar(select(User).where(User.email == login_id))
-    return find_user_by_phone(db, login_id)
-
-
-def find_user_by_phone(db, phone):
-    return db.scalar(select(User).join(Profile, Profile.user_id == User.id).where(Profile.phone == phone))
+def find_user(db, email):
+    return db.scalar(select(User).where(User.email == email.strip().lower()))
 
 
 def find_user_by_username(db, username):
@@ -66,42 +59,49 @@ def codes_sent_today(db, user_id):
         OtpCode.user_id == user_id, OtpCode.created_at > utc_now() - timedelta(days=1)))
 
 
-def deliver_login_code(user, code, phone):
-    """The ONE place that decides where a login code goes. Returns "email" or "whatsapp".
-    Accounts with an email → Gmail (email_sender.py). Phone-only accounts → WhatsApp (whatsapp_sender.py, Twilio sandbox).
-    Twilio keys missing → 503 PHONE_CODE_NOT_AVAILABLE; Twilio couldn't send → 503 WHATSAPP_FAILED."""
-    if not user.email:
-        try:
-            send_otp_whatsapp(phone, code)
-        except WhatsAppNotConfigured:
-            raise AppError(503, "PHONE_CODE_NOT_AVAILABLE",
-                           "WhatsApp login codes aren't set up on this server yet. Please log in with email.")
-        except WhatsAppFailed:
-            raise AppError(503, "WHATSAPP_FAILED", "We couldn't send the code on WhatsApp. Make sure this phone has "
-                           "joined the app's WhatsApp sandbox, then try again.")
-        return "whatsapp"
+def too_many_codes(db, user_id):
+    sent_last_hour = db.scalar(select(func.count(OtpCode.id)).where(
+        OtpCode.user_id == user_id, OtpCode.created_at > utc_now() - timedelta(hours=1)))
+    return sent_last_hour >= MAX_CODES_PER_HOUR
+
+
+def mask_email(email):
+    """"asha@gmail.com" → "a•••@gmail.com"."""
+    name, _, domain = email.partition("@")
+    return name[:1] + "•••@" + domain
+
+
+def demo_mode_on():
+    """DEMO_SHOW_OTP=true in backend/.env shows the code on screen. Demo only: must be false in the real app."""
+    return (os.getenv("DEMO_SHOW_OTP") or "").strip() == "true"
+
+
+def deliver_login_code(user, code):
+    """The ONE place that sends a login code (Gmail, email_sender.py). Couldn't send → 503 EMAIL_FAILED."""
     try:
         send_otp_email(user.email, code)
     except Exception as error:
         print("Email failed:", type(error).__name__, error)  # shows in the server window (never the code)
         raise AppError(503, "EMAIL_FAILED", "We couldn't send the email right now. Please try again in a minute.")
-    return "email"
 
 
 def send_new_code(db, user, ip):
-    """Make a new 6-digit code, save its hash, and send it. Older codes stop working. Returns "email" or "whatsapp".
+    """Make a new 6-digit code, save its hash, and email it. Older codes stop working.
+    Returns {"sent_to", "code"} (the code itself is only shown in demo mode: code_sent_reply).
     A sending problem → 503 and nothing is saved (open_db undoes the new code).
-    Daily caps (per account and per IP) → 429 TOO_MANY_REQUESTS: stops someone flooding a mailbox / phone."""
+    Max 5 codes per hour → 429 TOO_MANY_CODES. Daily caps (per account and per IP) → 429 TOO_MANY_REQUESTS:
+    stops someone flooding a mailbox."""
+    if too_many_codes(db, user.id):
+        raise AppError(429, "TOO_MANY_CODES", "Too many codes asked for. Please try again in an hour.")
     if codes_sent_today(db, user.id) >= CODES_PER_DAY_PER_ACCOUNT:
         raise rate_limit.too_many(60 * 60)
     rate_limit.check("codes-ip:" + ip, *CODES_PER_DAY_PER_IP)
     code = make_otp()
     db.execute(update(OtpCode).where(OtpCode.user_id == user.id, OtpCode.used.is_(False)).values(used=True))
     db.add(OtpCode(user_id=user.id, code_hash=hash_text(code), expires_at=utc_now() + CODE_LIFETIME))
-    phone = db.scalar(select(Profile.phone).where(Profile.user_id == user.id))
-    channel = deliver_login_code(user, code, phone)
+    deliver_login_code(user, code)
     rate_limit.add("codes-ip:" + ip)  # only codes really sent count
-    return channel
+    return {"sent_to": mask_email(user.email), "code": code}
 
 
 def cookie_is_secure(request):
@@ -144,23 +144,21 @@ def register(form: RegisterForm, request: Request):
         raise AppError(400, "PASSWORD_WEAK", "Your password needs " + ", ".join(problems) + ".")
 
     with open_db() as db:
-        # form.email / form.phone / form.username are already cleaned in models.py (lowercase, +230…)
+        # form.email / form.username are already cleaned in models.py (lowercase)
         if form.email and find_user(db, form.email):
             raise AppError(409, "EMAIL_TAKEN", "An account with this email already exists. Try logging in.")
-        if form.phone and find_user_by_phone(db, form.phone):
-            raise AppError(409, "PHONE_TAKEN", "An account with this phone number already exists. Try logging in.")
         if find_user_by_username(db, form.username):
             raise AppError(409, "USERNAME_TAKEN", "This username is already taken. Please pick another one.")
         user = User(email=form.email, username=form.username, password_hash=hash_password(form.password))
         db.add(user)
         db.flush()  # gives the user its id
-        db.add(Profile(user_id=user.id, full_name=full_name, phone=form.phone))  # phone: "+230…" or None
+        db.add(Profile(user_id=user.id, full_name=full_name))
     return {"message": "Account created! You can log in now.", "code": "ACCOUNT_CREATED"}
 
 
 @router.post("/login")
 def login(form: LoginForm, request: Request):
-    """Step 1: check the password. If correct, send a 6-digit code (step 2 is /verify-code). form.email = email or phone."""
+    """Step 1: check the password. If correct, send a 6-digit code (step 2 is /verify-code)."""
     ip = rate_limit.client_ip(request)
     rate_limit.hit("login-ip:" + ip, *LOGIN_PER_IP)
     rate_limit.hit("login-account:" + form.email.strip().lower(), *LOGIN_PER_ACCOUNT)
@@ -185,16 +183,20 @@ def login(form: LoginForm, request: Request):
 
         user.failed_attempts = 0
         db.commit()  # the reset is kept even if sending the code fails
-        channel = send_new_code(db, user, ip)
-    if channel == "whatsapp":
-        return code_sent_reply("Password correct. We sent a 6-digit code to your WhatsApp.", "CODE_SENT_WHATSAPP")
-    return code_sent_reply("Password correct. We emailed you a 6-digit code.", "CODE_SENT")
+        sent = send_new_code(db, user, ip)
+    return code_sent_reply("Password correct. We emailed you a 6-digit code.", "CODE_SENT", sent, show_demo_code=True)
 
 
-def code_sent_reply(message, code):
-    """Tells the code screen how long the code lasts and how long until Resend works."""
-    return {"message": message, "code": code, "expires_in": int(CODE_LIFETIME.total_seconds()),
-            "resend_wait": int(RESEND_WAIT.total_seconds())}
+def code_sent_reply(message, code, sent, show_demo_code=False):
+    """Tells the code screen how long the code lasts, when Resend works, and where the code went (masked).
+    demo_code: only after a correct password (/login) AND DEMO_SHOW_OTP=true. Never from /resend-code: it needs
+    no password, so anyone who knows the email could read the code there."""
+    reply = {"message": message, "code": code, "expires_in": int(CODE_LIFETIME.total_seconds()),
+             "resend_wait": int(RESEND_WAIT.total_seconds()),
+             "sent_to": sent["sent_to"]}
+    if show_demo_code and demo_mode_on():
+        reply["demo_code"] = sent["code"]
+    return reply
 
 
 @router.post("/resend-code")
@@ -209,10 +211,8 @@ def resend_code(form: EmailForm, request: Request):
             raise AppError(400, "LOGIN_AGAIN", "Please log in again to get a new code.")
         if code_sent_recently(db, user.id):
             raise AppError(429, "RESEND_WAIT", "Please wait a few seconds before asking for another code.")
-        channel = send_new_code(db, user, ip)
-    if channel == "whatsapp":
-        return code_sent_reply("We sent a new 6-digit code to your WhatsApp.", "CODE_RESENT_WHATSAPP")
-    return code_sent_reply("We emailed you a new 6-digit code.", "CODE_RESENT")
+        sent = send_new_code(db, user, ip)
+    return code_sent_reply("We emailed you a new 6-digit code.", "CODE_RESENT", sent)
 
 
 @router.post("/send-login-code")
@@ -225,9 +225,14 @@ def send_login_code(form: EmailForm, request: Request):
         # account's daily cap reached → quietly send nothing (an error would show the account exists)
         if (user and user.is_locked and not code_sent_recently(db, user.id)
                 and codes_sent_today(db, user.id) < CODES_PER_DAY_PER_ACCOUNT):
-            send_new_code(db, user, ip)
-    # Same reply every time, so nobody can use this to check which emails / phones have accounts
-    return {"message": "If this account is locked, we've sent a login code to its email or phone.",
+            try:
+                send_new_code(db, user, ip)
+            except AppError as error:  # too many codes / sending failed: the reply stays the same
+                db.rollback()  # the unsent code is not kept
+                print("Locked-account code not sent:", error.code)
+    # Same reply every time (no masked email, no demo code), so nobody can use this to check
+    # which emails have accounts or are locked
+    return {"message": "If this account is locked, we've sent a login code to its email.",
             "code": "LOCKED_CODE_SENT"}
 
 

@@ -38,7 +38,7 @@ To open it on a phone: `cloudflared tunnel --url http://localhost:8000` and open
 | Variable | Needed for |
 |---|---|
 | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | Emailing login codes (Gmail App Password) |
-| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` | WhatsApp login codes (optional) |
+| `DEMO_SHOW_OTP` | `false`! Only `true` for a demo: shows the login code on screen |
 | `GROQ_API_KEY` (+ optional `GROQ_MODEL`, `AI_*` limits) | AI financial insights (optional – without it the app gives "Quick insights (no AI)") |
 | `DATABASE_URL` | Leave empty for SQLite; set a PostgreSQL URL (Supabase/Neon) when deploying |
 | `APP_ENV` | `production` on the server (Secure cookies, HSTS, no `/docs`); empty = development |
@@ -48,10 +48,14 @@ Never commit `.env`.
 ## Deploy (Render + Neon)
 1. **Neon** (neon.tech, free): create a project, copy the connection string (`postgresql://…?sslmode=require`).
 2. **Render** (render.com): New → Blueprint → this repo, Blueprint Path `commitlocal/render.yaml` (or a free Web Service with Root Directory `commitlocal/backend`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"`, health check `/health`).
-3. Environment variables (names only, values in Render's dashboard): `PYTHON_VERSION` (3.14.0), `APP_ENV` (production), `DATABASE_URL`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, optional `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `GROQ_API_KEY`, `GROQ_MODEL`, `AI_*` limits.
+3. Environment variables (names only, values in Render's dashboard): `PYTHON_VERSION` (3.14.0), `APP_ENV` (production), `DATABASE_URL`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, optional `GROQ_API_KEY`, `GROQ_MODEL`, `AI_*` limits.
 4. Deploy. The tables are created by the Alembic migrations when the app starts. Open `https://<your-app>.onrender.com/login.html`.
 
 Rate limits (login, register, codes) are kept in memory: fine for one free instance; they reset when Render restarts it.
+
+### Login codes
+A 6-digit login code is emailed at **every** login (none at registration).
+**`DEMO_SHOW_OTP`** must stay **`false`** outside a demo: `true` shows the code on the code screen (after a correct password), so the inbox is no longer needed.
 
 ## Tests
 Install `backend/requirements-dev.txt` first (adds pytest).

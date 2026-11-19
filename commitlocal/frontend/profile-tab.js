@@ -1,5 +1,5 @@
 // profile-tab.js — the Profile tab (it was the Arcade tab):
-//   a) My account: name, username, email, phone, occupation, password (GET /api/profile + PUT /api/profile/...).
+//   a) My account: name, username, email, occupation, password (GET /api/profile + PUT /api/profile/...).
 //      A value on screen only changes after the server said OK; then everything is read again from the server.
 //      Also two read-only lines: is Money in / are Loans shared? (GET /api/info-status)
 //   b) Weekly budget + badges (moved from the Dashboard; same GET /api/dashboard, badges are awarded there).
@@ -18,7 +18,7 @@ let weekInputTyped = false; // true once the user typed in (or chose) the weekly
 const BADGE_ICONS = { FIRST_WEEK: "🥇", BUDGET_KEEPER: "🛡️", CONSISTENT_PLANNER: "📅", SAVINGS_STREAK: "🔥" };
 const OCCUPATION_KEYS = ["profile.occ.student", "profile.occ.employed", "profile.occ.selfEmployed",
   "profile.occ.partTime", "profile.occ.lookingForWork", "profile.occ.other"];
-const ACCOUNT_FIELDS = ["username", "email", "phone", "occupation"]; // the name field was removed: the username is shown instead
+const ACCOUNT_FIELDS = ["username", "email", "occupation"]; // the name field was removed: the username is shown instead
 // Same rules as get_password_problems() in backend/security.py (the server checks again)
 const NEW_PASSWORD_RULES = [
   { id: "pw-rule-length", test: (p) => p.length >= 8 },
@@ -58,20 +58,14 @@ function drawProfile() {
 function drawAccount(account) {
   byId("account-title").textContent = account.username || t("profile.addUsername"); // username, never the old full name
   byId("account-avatar").textContent = (account.username || "🙂").trim().charAt(0).toUpperCase();
-  byId("account-handle").textContent = account.email || formatPhone(account.phone) || ""; // under the username
+  byId("account-handle").textContent = account.email || ""; // under the username
   showAccountValue("username", account.username, "profile.addUsername");
   showAccountValue("email", account.email, "profile.notAdded");
-  showAccountValue("phone", formatPhone(account.phone), "profile.notAdded");
   showAccountValue("occupation", account.occupation, "profile.notAdded");
   // "Add" instead of "Edit" when there is nothing yet
-  ["username", "email", "phone", "occupation"].forEach((field) => {
+  ["username", "email", "occupation"].forEach((field) => {
     setText(byId("edit-" + field), account[field] ? "common.edit" : "profile.add");
   });
-}
-
-// "+23051234567" → "+230 5123 4567" (easier to read; saved without spaces)
-function formatPhone(phone) {
-  return phone ? phone.replace(/^\+230(\d{3,4})(\d{4})$/, "+230 $1 $2") : phone;
 }
 
 function showAccountValue(field, value, emptyKey) {
@@ -97,7 +91,7 @@ function openAccountEditor(field) {
   byId("edit-" + field).setAttribute("aria-expanded", "true");
   byId("error-" + field).textContent = "";
   const values = { username: profileData.username, email: profileData.email,
-    phone: profileData.phone, occupation: profileData.occupation };
+    occupation: profileData.occupation };
   const input = byId("input-" + field);
   input.value = values[field] || "";
   form.querySelectorAll('input[type="password"], input[data-was-password]').forEach((box) => { box.value = ""; });
@@ -115,8 +109,7 @@ function closeAccountEditor(field) {
 function sendAccountField(field) {
   const value = byId("input-" + field).value.trim();
   if (field === "username") return saveProfileUsername(value);
-  if (field === "email") return saveProfileEmail(value || null, byId("input-email-password").value);
-  if (field === "phone") return saveProfilePhone(value || null, byId("input-phone-password").value);
+  if (field === "email") return saveProfileEmail(value, byId("input-email-password").value);
   return saveProfileOccupation(value || null);
 }
 
@@ -124,10 +117,8 @@ function sendAccountField(field) {
 function findAccountProblem(field) {
   const value = byId("input-" + field).value.trim();
   if (field === "username" && !/^[a-zA-Z0-9._-]{3,30}$/.test(value)) return t("error.INVALID_USERNAME");
-  if (field === "phone" && value && !/^(\+230)?(5\d{7}|\d{7})$/.test(value.replace(/[\s-]/g, ""))) {
-    return t("error.INVALID_PHONE");
-  }
-  if ((field === "email" || field === "phone") && !byId("input-" + field + "-password").value) {
+  if (field === "email" && !value) return t("error.EMAIL_REQUIRED");
+  if (field === "email" && !byId("input-email-password").value) {
     return t("profile.needPassword");
   }
   return "";

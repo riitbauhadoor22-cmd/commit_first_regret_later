@@ -1,12 +1,13 @@
-// login.js — runs login.html: tabs, the live password strength meter, the Register checks (username, email and/or
-// phone) and the calls to /api/auth/... Login = email OR phone number + password, then a 6-digit code.
+// login.js — runs login.html: tabs, the live password strength meter, the Register checks (username, email)
+// and the calls to /api/auth/... Login = email + password, then a 6-digit code sent by email.
 // Texts come from i18n.js: t("key"). Backend replies carry a "code" that is translated here (see readMessage).
 
 // ===== STATE =====
-let currentEmail = ""; // email or phone, remembered between the password step and the code step
+let currentEmail = ""; // the email, remembered between the password step and the code step
 let codeExpiresAt = 0;  // when the current code expires (ms, from Date.now())
 let resendReadyAt = 0;  // when "Resend OTP" can be tapped again (ms)
 let codeTimer = null;   // the 1-second countdown interval
+let lastSent = null;    // where the last code went: { sentTo, demoCode } (from the backend reply)
 
 // Same rules as get_password_problems() in backend/security.py
 const PASSWORD_RULES = [
@@ -17,9 +18,8 @@ const PASSWORD_RULES = [
   { id: "rule-symbol", test: (p) => /[^A-Za-z0-9]/.test(p) },
 ];
 
-// Same checks as clean_username() / clean_phone() in backend/models.py (the backend checks again)
+// Same check as clean_username() in backend/models.py (the backend checks again)
 const USERNAME_PATTERN = /^[a-zA-Z0-9._-]{3,30}$/;
-const PHONE_PATTERN = /^(\+230)?(5\d{7}|\d{7})$/; // Mauritius: mobile 5XXXXXXX or a 7-digit landline
 
 // Index = how many rules pass (0 to 5)
 const STRENGTH_LEVELS = [
@@ -56,8 +56,9 @@ async function postJson(url, data) {
       body: JSON.stringify(data),
     });
     const body = await res.json().catch(() => ({}));
-    return { ok: res.ok, status: res.status, message: readMessage(body),
-             expiresIn: body.expires_in, resendWait: body.resend_wait };
+    return { ok: res.ok, status: res.status, message: readMessage(body), params: body.params || {},
+             expiresIn: body.expires_in, resendWait: body.resend_wait,
+             sentTo: body.sent_to, demoCode: body.demo_code };
   } catch (error) {
     return { ok: false, status: 0, message: t("error.OFFLINE") };
   }
@@ -92,9 +93,27 @@ function startCodeScreen(result) {
   byId("code-input").focus();
   codeExpiresAt = Date.now() + (result.expiresIn || 300) * 1000;
   resendReadyAt = Date.now() + (result.resendWait || 30) * 1000;
+  lastSent = { sentTo: result.sentTo, demoCode: result.demoCode };
+  drawCodeDestination();
   clearInterval(codeTimer);
   codeTimer = setInterval(updateCodeTimer, 1000);
   updateCodeTimer();
+}
+
+// ===== WHERE THE CODE WENT =====
+// "Code sent to a•••@gmail.com" and the DEMO MODE box
+function drawCodeDestination() {
+  const sentTo = byId("code-sent-to");
+  sentTo.hidden = !lastSent.sentTo; // the locked-account reply says nothing about the account
+  if (lastSent.sentTo) setText(sentTo, "login.sentByEmail", { to: lastSent.sentTo });
+  showDemoCode(lastSent.demoCode);
+}
+
+// Only when the server runs with DEMO_SHOW_OTP=true (a demo without real email)
+function showDemoCode(code) {
+  const box = byId("demo-code-box");
+  box.hidden = !code;
+  if (code) setText(box, "login.demoCode", { code: code });
 }
 
 function updateCodeTimer() {
@@ -184,11 +203,10 @@ function updateStrengthMeter() {
 }
 
 // ===== FORM ACTIONS =====
-// Quick checks of username / email / phone before sending (texts = the backend's error codes)
-function findRegisterProblem(username, email, phone) {
+// Quick checks of username / email before sending (texts = the backend's error codes)
+function findRegisterProblem(username, email) {
   if (!USERNAME_PATTERN.test(username)) return t("error.INVALID_USERNAME");
-  if (!email && !phone) return t("error.EMAIL_OR_PHONE_REQUIRED");
-  if (phone && !PHONE_PATTERN.test(phone.replace(/[\s-]/g, ""))) return t("error.INVALID_PHONE");
+  if (!email) return t("error.EMAIL_REQUIRED");
   return "";
 }
 
@@ -196,8 +214,7 @@ async function registerUser(event) {
   event.preventDefault();
   const username = byId("reg-username").value.trim();
   const email = byId("reg-email").value.trim();
-  const phone = byId("reg-phone").value.trim();
-  const problem = findRegisterProblem(username, email, phone);
+  const problem = findRegisterProblem(username, email);
   if (problem) return showMessage(problem, true);
   const password = byId("reg-password").value;
   if (countPassedRules(password) < PASSWORD_RULES.length) {
@@ -210,15 +227,14 @@ async function registerUser(event) {
   button.disabled = true;
   const result = await postJson("/api/auth/register", {
     username: username,
-    email: email || null, // empty = not given (a phone number is enough)
-    phone: phone || null,
+    email: email,
     password: password,
     confirm_password: byId("reg-confirm").value,
   });
   button.disabled = false;
   if (!result.ok) return showMessage(result.message, true);
 
-  byId("login-email").value = email || phone; // log in with what they gave
+  byId("login-email").value = email;
 
   byId("register-form").reset();
   updateStrengthMeter();

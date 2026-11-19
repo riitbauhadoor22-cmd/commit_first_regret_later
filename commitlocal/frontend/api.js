@@ -54,12 +54,9 @@ function saveMyLanguage(language) { return callApi("PUT", "/api/auth/language", 
 // ===== PROFILE TAB (always the logged-in user's own account; the password hash is never sent) =====
 function getProfile() { return callApi("GET", "/api/profile"); }
 function saveProfileUsername(username) { return callApi("PUT", "/api/profile/username", { username: username }); }
-// email / phone null = remove it (the server keeps at least one of the two); both need the current password
+// needs the current password
 function saveProfileEmail(email, currentPassword) {
   return callApi("PUT", "/api/profile/email", { email: email, current_password: currentPassword });
-}
-function saveProfilePhone(phone, currentPassword) {
-  return callApi("PUT", "/api/profile/phone", { phone: phone, current_password: currentPassword });
 }
 function saveProfileOccupation(occupation) { return callApi("PUT", "/api/profile/occupation", { occupation: occupation }); }
 function changeMyPassword(current, newPassword, confirm) {

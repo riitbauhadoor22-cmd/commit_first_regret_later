@@ -33,8 +33,8 @@ commitlocal/
 │
 ├── frontend/                   ← everything the browser sees (HTML, CSS, plain JS)
 │   ├── index.html              ← ✅ 4 tab pages (Money, Dashboard, Loans, Profile), floating tab bar, pop-up "sheets" (expense, income, budget, bank, target, goal, add money, lists, change password, "Log out?")
-│   ├── login.html              ← ✅ Login (email OR phone + password) / Register (name, username, email and/or phone, password) tabs, "enter your code" box, "account locked" box
-│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, quick checks (username, email-or-phone, Mauritius phone), code countdown + Resend OTP, calls /api/auth/...
+│   ├── login.html              ← ✅ Login (email + password) / Register (username, email, password) tabs, "enter your code" box (masked "Code sent by email to …", DEMO MODE box), "account locked" box
+│   ├── login.js                ← ✅ tabs, live password strength meter, Show/Hide password buttons, quick checks (username, email), code countdown + Resend OTP, where the code went (drawCodeDestination, showDemoCode), calls /api/auth/...
 │   ├── theme.js                ← ✅ Brighter (default, shown as "Blue") / Darker (shown as "Dark") theme; follows changes made in another tab (storage event): localStorage "theme" → `data-theme="darker"` on <html>; loaded in <head> of both pages before anything is drawn
 │   ├── style.css               ← ✅ navy glass theme: EVERY colour is a CSS variable at the top (`:root` = Brighter, `:root[data-theme="darker"]` = Darker), cards, tab bar, Dashboard grid, jars, Profile, dialog (mobile-first, 360 / 390 / 430 px)
 │   ├── api.js                  ← ✅ callApi() + one small function per endpoint (getSummary, addExpense, getGoals…); throws a friendly Error; 401 → login page
@@ -45,7 +45,7 @@ commitlocal/
 │   ├── loan-calc.js            ← ✅ loan maths only (amortisation, extra payments, affordability, repaymentFor = EMI for an amount); window.LoanCalc + Node module.exports
 │   ├── game-calc.js            ← ✅ Budget Challenge live totals / split % / bar widths (pure, Node-tested; display only)
 │   ├── arcade-tab.js           ← ✅ Budget Challenge game (levels, fields, event, result, previous results) — shown on the Profile tab
-│   ├── profile-tab.js          ← ✅ Profile tab: My account (name, username, email, phone, occupation, password), shared-info lines, weekly budget + badges, theme buttons (drawThemeButtons / pickTheme; the buttons live in #sheet-settings)
+│   ├── profile-tab.js          ← ✅ Profile tab: My account (name, username, email, occupation, password), shared-info lines, weekly budget + badges, theme buttons (drawThemeButtons / pickTheme; the buttons live in #sheet-settings)
 │   ├── loans-tab.js            ← ✅ Loans tab: forms, results, Chart.js graphs (CDN chart.js@4.4.1, hidden offline); section 2 calls /api/loans/predict
 │   ├── savings-view.js         ← ✅ Money → Savings (was targets-tab.js, deleted): bank card, monthly saving, safety net, goals, New goal / Add money / bank / target pop-ups, showGoalCard(goalId); owns STATUS_KEYS / STATUS_CLASSES / PRIORITY_KEYS
 │   ├── dashboard.js            ← ✅ Dashboard tab: 2-column grid of tiles that open into blocks (balance, score, spending, saving rate, savings jars, loans, recap) from GET /api/dashboard; no maths of its own, never the AI
@@ -72,7 +72,6 @@ commitlocal/
     ├── errors.py               ← ✅ AppError(status, CODE, message, params) + handlers: every error reply = {detail, code, params}
     ├── security.py             ← ✅ password rules, bcrypt (14 rounds), password_matches() (never crashes on > 72 bytes), 6-digit codes, session tokens
     ├── email_sender.py         ← ✅ emails the 6-digit code through Gmail
-    ├── whatsapp_sender.py      ← ✅ sends the 6-digit code by WhatsApp (Twilio sandbox) to phone-only accounts; keys only in .env
     ├── categories.py           ← ✅ CATEGORIES (+ default need/want) · 🆕 the other fixed lists: categories (+ default Need/Want), income types, frequencies
     ├── game/                   ← ✅ Budget Challenge logic (no UI, no routes): scenarios.py = config (levels, categories, min_amount, locked, events, points — edit here),
     │                             events.py (pick + effect), budget_engine.py (checks, totals in cents, over-income block), scoring.py (score + feedback)
@@ -87,8 +86,8 @@ commitlocal/
     ├── services/ai_insights.py ← ✅ the ONLY Groq code: settings from .env, prompt, one HTTP call (httpx, no retries), reply check (Pydantic), in-memory guards (one request per user, pause after 429)
     ├── expense_parser.py       ← 🆕 "I spent 245 on lunch" → {amount: 245, category: "Food & drinks", note: "lunch"}
     ├── routes/
-    │   ├── auth.py             ← ✅ /api/auth (+ `require_user` helper: 401 if not logged in) + /resend-code; find_user(email OR phone); deliver_login_code() = the ONE place a code is sent
-    │   ├── profile.py          ← ✅ /api/profile: own account only (name, username, email, phone, occupation, password); never returns the password hash
+    │   ├── auth.py             ← ✅ /api/auth (+ `require_user` helper: 401 if not logged in) + /resend-code; find_user(email); deliver_login_code() = the ONE place a code is sent
+    │   ├── profile.py          ← ✅ /api/profile: own account only (name, username, email, occupation, password); never returns the password hash
     │   ├── summary.py          ← 🆕 /api/summary: everything the Money tab's dark card + category rows need
     │   ├── income.py           ← 🆕 /api/income: list, add, edit, delete
     │   ├── expenses.py         ← ✅ /api/expenses: list, add · 🆕 edit, delete; quick-add chips
@@ -121,7 +120,7 @@ tests/frontend/game-calc.test.js ← ✅ game-calc.js (cents, never NaN, UTC→l
 tests/frontend/loan-calc.test.js ← ✅ Node built-in tests for loan-calc.js (run: node --test tests/frontend)
 tests/frontend/i18n.test.js     ← ✅ same keys + no empty values in en/fr/mfe, t() fallback, every data-i18n / t("…") / backend error code has a translation
 tests/frontend/budget-calc.test.js ← ✅ no budget, under / at / over, colour thresholds 79/80/100/101%
-tests/backend/test_profile.py ← ✅ Profile routes: own account only, name / username (taken, any case) / email (format, taken, wrong password, remove) / phone (normalised, taken, password) / occupation, can't remove both email and phone, password change (wrong / weak / mismatch / success logs other devices out), no reply of /api/auth/* or /api/profile* contains the hash, migration 0008 keeps old accounts + their rows
+tests/backend/test_profile.py ← ✅ Profile routes: own account only, name / username (taken, any case) / email (format, taken, wrong password, can't be removed) / occupation, /phone route gone, password change (wrong / weak / mismatch / success logs other devices out), no reply of /api/auth/* or /api/profile* contains the hash, migration 0008 keeps old accounts + their rows
 tests/backend/test_savings_model.py ← 🆕 three savings values: test user (Left Rs 1,868, Savings 5%, forecast on track), bank balance never changes the month, target reached + capped, income 0 (no NaN), negative left + reason, split ≤ 100%, loans once, same numbers on summary / savings / dashboard / insights
 tests/backend/test_weekly_suggestion.py ← ✅ suggested weekly budget: category budgets, income − bills − loans − saving, loan also a fixed bill counted once, ≤ 0 → too_low, no data, saved value kept, other users
 tests/backend/test_dashboard.py ← ✅ the 15 Dashboard cases (new user, income + expenses, savings, no goals, 1 / several / incomplete loans, 6+ / 1 month history, weekly budget kept / over / too little recorded, no date, edits + deletes keep badges, several goals, other users) + health score rules, deterministic, no AI
@@ -130,12 +129,12 @@ tests/backend/test_optional_info.py ← ✅ the 12 "Permission Denied" cases: ea
 tests/backend/test_insights.py ← ✅ check-up maths, no personal text sent, cache reuse, page loads / tab changes / adding expenses never call Groq, outdated after changes, refresh, repeated clicks, cooldown, 2 requests at once → 1 call, daily limit, Groq error / bad JSON / 429 pause, no key, other users. Groq is ALWAYS faked (`fake_groq` fixture in conftest.py, autouse) — tests can never reach the real API
 tests/backend/test_inflation.py ← ✅ CPI builder (temp files), 12-month rate, projection + edge cases, endpoints (uses tests/fixtures/cpi_sample.csv = FAKE data)
 tests/backend/                  ← pytest + FastAPI TestClient (temporary database, fake email — never sends real emails)
-    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender, logged-in clients
+    ├── conftest.py             ← ✅ fixtures: fresh temp DB per test (runs the migrations), fake email sender (`sent_codes`, `.where` = channel + address), DEMO_SHOW_OTP forced to false before .env is read, logged-in clients
     ├── test_otp.py             ← ✅ valid / expired / wrong code, hashes only, lowercase email, locked-account unlock
     ├── test_money.py           ← ✅ expenses (incl. bad amounts), cents storage, UUIDs, budgets, income, savings, goals
     ├── test_budgets_expenses.py ← ✅ budget set/update + /api/budget alias, bad input, add/edit/delete, month+category filter, other users
     ├── test_security_db.py     ← ✅ user A can't read/edit/delete user B's data, ON DELETE CASCADE, CHECK (no negative amounts)
-    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak; username rules + taken any case; email only / phone only / both / neither; phone normalised / invalid / taken), login (right / wrong / unknown; by phone; phone-only → code on WhatsApp (faked), resend on WhatsApp, Twilio keys missing → 503 PHONE_CODE_NOT_AVAILABLE, Twilio fails → 503 WHATSAPP_FAILED), /me, Gmail not set up → 503 (SMTP faked)
+    ├── test_auth.py            ← ✅ register (valid / duplicate / missing / weak; username rules + taken any case; email required; a sent phone is ignored), login (right / wrong / unknown), code emailed with masked `sent_to`, email failure → 503 and nothing saved, 6th code in an hour → 429 TOO_MANY_CODES, DEMO_SHOW_OTP off / on, /send-login-code identical reply for unknown / unlocked / locked, /me, Gmail not set up → 503 (SMTP faked)
     ├── test_income_summary.py  ← ✅ regular vs one-off income per month, fixed bills, budget none/under/at/over, summary maths (In/Out/Saved/Left, 50·30·20 %)
     └── test_route_safety.py    ← ✅ reads EVERY /api route from main.app: 401 when logged out; no 500 on empty / negative / 1e20 / Infinity / NaN / text input
 tests/frontend/smoke.test.js    ← ✅ static checks: script order (theme.js first), tab bar = Money/Dashboard/Loans/Profile with no Targets/Arcade links, Log out asks first, every called function defined, every JS id exists in the HTML, manifest + icons, SW caches scripts, no API keys, .gitignore / .env.example
@@ -151,11 +150,12 @@ tests/frontend/smoke.test.js    ← ✅ static checks: script order (theme.js fi
 ## 3. How the logic works
 
 ### Login and registration ✅
-1. **Register** → **username** (the Full name field was removed; `full_name` is optional for old clients) (required: 3–30 letters / digits / `.` `_` `-`, saved lowercase, unique in any case → 409 `USERNAME_TAKEN`), **email and/or phone** (at least one → else 422 `EMAIL_OR_PHONE_REQUIRED`; email lowercase + unique → `EMAIL_TAKEN`; phone = Mauritius `+230` + 7 digits or 8 digits starting with 5, spaces / dashes removed, saved as `+230XXXXXXXX` in `profiles.phone`, unique → `PHONE_TAKEN`, bad → 422 `INVALID_PHONE`), password twice → the strength meter turns red→green and ticks each rule → Python checks everything again (`models.py`: `clean_username`, `clean_phone`, `clean_email`, `RegisterForm` model validator) → the password is saved as a **bcrypt hash (14 rounds)**. The username is never used to log in.
-2. **Log in, step 1** → **email OR phone number** + password (the JSON field is still called `email`; `clean_login_id` turns it into a lowercase email or `+230…`) → if correct, a **6-digit code** is sent by `deliver_login_code()` in `routes/auth.py` (expires in **5 minutes**): accounts with an email → Gmail. **Phone-only accounts → WhatsApp** (`whatsapp_sender.py`, Twilio WhatsApp sandbox; reply code `CODE_SENT_WHATSAPP` / `CODE_RESENT_WHATSAPP`). Twilio keys missing → 503 `PHONE_CODE_NOT_AVAILABLE` ("log in with email"); Twilio can't send (e.g. the phone hasn't joined the sandbox, error 63015) → 503 `WHATSAPP_FAILED`; in both cases the unsent code isn't kept. One try, never retried; the code and token are never logged.
+1. **Register** → **username** (the Full name field was removed; `full_name` is optional for old clients) (required: 3–30 letters / digits / `.` `_` `-`, saved lowercase, unique in any case → 409 `USERNAME_TAKEN`), **email** (required, lowercase + unique → `EMAIL_TAKEN`), password twice → the strength meter turns red→green and ticks each rule → Python checks everything again (`models.py`: `clean_username`, `required_email`) → the password is saved as a **bcrypt hash (14 rounds)**. The username is never used to log in.
+2. **Log in, step 1** → **email** + password → if correct, a **6-digit code** is emailed by `deliver_login_code()` in `routes/auth.py` (expires in **5 minutes**). A code is needed at **every** login; none is sent at registration. `/login` and `/resend-code` reply with `sent_to` = the masked address (`a•••@gmail.com`) → "Code sent by email to a•••@gmail.com" (only after a correct password). Gmail can't send → 503 `EMAIL_FAILED`; the unsent code is never kept. (WhatsApp / phone login was removed: decision 12.)
+2b. **Demo mode** (`DEMO_SHOW_OTP=true` in `.env`, default false, anything but exactly `true` = off): the `/login` reply also has `demo_code`, shown in a dashed warning box "DEMO MODE — code: 123456". Only `/login` (password checked) — never `/resend-code` (no password) or `/send-login-code`. If the email fails in demo mode the normal error applies (no code saved, none shown). **Must be false in the real app.**
 3. **Log in, step 2** → the user types the code → if correct, Python creates a session and puts it in an **HttpOnly cookie** (JavaScript can't read it) → the user is logged in for 7 days.
 4. **3 wrong passwords** → the account is **locked**, and even the right password won't work → the user taps **"Send me a login code"** → enters the emailed code → logged in **and unlocked**.
-5. **Safety limits:** a code dies after 5 wrong guesses; a new code replaces the old one; a new unlock code ("Send me a login code") can only be sent once every 60 seconds.
+5. **Safety limits:** 6-digit codes, stored hashed; 5 minutes; a code dies after 5 wrong guesses; 15 wrong guesses per hour over all codes; a new code replaces the old one; 30 s between codes; **max 5 codes sent per account per rolling hour** (`MAX_CODES_PER_HOUR`, counts `otp_codes` rows) → 429 `TOO_MANY_CODES`. `/send-login-code` (locked account) always gives the **same reply** (no masked address, no demo code) whether the account exists, is locked, is over the limit or the email failed — it just doesn't send. Login always says "Wrong email or password" (never reveals if an email is registered).
 6. The top **Log in | Register** is a segmented toggle (mode switch, `.tabs.segmented`), not a button; the only primary "Log in" button is under the password.
 6b. **After registering** → the app switches to the Login tab, fills in the email, shows "Account created, please log in" and **hides the Register tab**. The link "Don't have an account? Register" under the login form brings it back.
 7. **Code screen countdown** → login / send-login-code / resend-code reply with `expires_in` (300) and `resend_wait` (30). `login.js` shows "Code expires in 4:32", ticking every second. At 0:00 → "Your code has expired. Please request a new one." and Verify is disabled.
@@ -324,10 +324,9 @@ One GET `/api/dashboard?today=YYYY-MM-DD` (the phone's local date; ignored if mo
 
 ### Profile tab ✅ (`profile-tab.js`, `routes/profile.py`)
 In order:
-1. **My account** (looks like an account page): avatar letter, name, @username, then rows Name · Username · Email · Phone number · Occupation · Password, each with **Edit / Add**. Edit opens an inline form with Save / Cancel ("Saving…" while it runs). The value on screen only changes after the server says OK, then GET `/api/profile` is read again; errors are the translated `error.<CODE>` texts.
-   - **Name row removed** (header = the username, email/phone under it; avatar = first letter of the username). `PUT /api/profile/name` stays for old clients, optional. **Username** = `users.username` (3–30 letters / digits / . _ -, lowercase, unique in any case → 409 `USERNAME_TAKEN`; old accounts show "Add a username"). Names are not unique; usernames are.
-   - **Email**: needs the **current password** (400 `WRONG_PASSWORD`, never 401 because 401 = "logged out" for the app), valid format, lowercase, not used by another account (409 `EMAIL_IN_USE`). Empty = remove it (only while a phone is left). There is no separate email-verification step: the next login code is emailed to the new address, so logging in again proves it.
-   - **Phone**: same Mauritius rules as registration, needs the current password, unique (409 `PHONE_TAKEN`), empty = remove (only while an email is left). Removing the last of email / phone → 400 `NEED_EMAIL_OR_PHONE`.
+1. **My account** (looks like an account page): avatar letter, name, @username, then rows Name · Username · Email · Occupation · Password, each with **Edit / Add**. Edit opens an inline form with Save / Cancel ("Saving…" while it runs). The value on screen only changes after the server says OK, then GET `/api/profile` is read again; errors are the translated `error.<CODE>` texts.
+   - **Name row removed** (header = the username, email under it; avatar = first letter of the username). `PUT /api/profile/name` stays for old clients, optional. **Username** = `users.username` (3–30 letters / digits / . _ -, lowercase, unique in any case → 409 `USERNAME_TAKEN`; old accounts show "Add a username"). Names are not unique; usernames are.
+   - **Email**: needs the **current password** (400 `WRONG_PASSWORD`, never 401 because 401 = "logged out" for the app), valid format, lowercase, not used by another account (409 `EMAIL_IN_USE`). It can't be removed (it is how the user logs in). There is no separate email-verification step: the next login code is emailed to the new address, so logging in again proves it.
    - **Occupation** (`profiles.occupation`, up to 60 characters, optional): input + `<datalist>` suggestions (Student, Employed, Self-employed, Part-time, Looking for work, Other) or own text; empty = removed ("Not added").
    - **Password**: shown as "••••••••" (never the password or hash). "Change password" pop-up: current / new / confirm, each with its own Show/Hide, live rule ticks (same rules as registration). Server: bcrypt check of the current one, `get_password_problems`, new == confirm, `hash_password`; **every other session of the user is deleted** (other devices are logged out), this one stays.
    - Two read-only lines from GET `/api/info-status`: "Money in" and "Loans": Shared / Marked as none / Not shared 🔒 (+ "Add it" → Money → Money in, or the Loans tab).
@@ -509,8 +508,8 @@ profiles  otp_codes   sessions    income    expenses   budgets  savings_settings
 
 | Table | Columns (money = `_cents`) | Notes |
 |---|---|---|
-| `users` | id, email (empty = phone-only account, migration 0008), **username** (unique, lowercase, empty for accounts made before 0008), password_hash, failed_attempts, is_locked, created_at | locked after 3 wrong passwords; CHECK email / username lowercase |
-| `profiles` | id, user_id (unique), full_name (optional since 0009, no longer shown), date_of_birth (optional), phone (optional, `+230XXXXXXXX`, **unique**, can be used to log in), language, **occupation** (optional, 60), updated_at | personal details, apart from login data (migration 0008: occupation + unique phone) |
+| `users` | id, email (required for new accounts; may be empty only for old phone-only accounts), **username** (unique, lowercase, empty for accounts made before 0008), password_hash, failed_attempts, is_locked, created_at | locked after 3 wrong passwords; CHECK email / username lowercase |
+| `profiles` | id, user_id (unique), full_name (optional since 0009, no longer shown), date_of_birth (optional), phone (no longer used since decision 12; kept so no data is deleted), language, **occupation** (optional, 60), updated_at | personal details, apart from login data (migration 0008: occupation + unique phone) |
 | `otp_codes` | id, user_id, code_hash, expires_at, attempts, used, created_at | SHA-256 of the 6-digit code; 5 min; dies after 5 wrong guesses; created_at → 30 s resend wait |
 | `sessions` | token_hash (PK), user_id, expires_at | SHA-256 of the cookie value; 7 days |
 | `income` | id, user_id, name, source, amount_cents, frequency, date, created_at | `source` = Salary/Allowance/… (API field `type`) |
@@ -550,27 +549,26 @@ venv\Scripts\python migrate_old_db.py                              # ONE TIME: c
 - `APP_ENV=production` (config.py): session cookie always Secure + HttpOnly + SameSite=Lax (dev: Secure only on https), `Strict-Transport-Security: max-age=31536000`, no /docs /redoc /openapi.json. Always: Referrer-Policy strict-origin-when-cross-origin, X-Frame-Options DENY, nosniff, CSP. Any crash → 500 `SERVER_ERROR` with a friendly message (errors.py), never a stack trace.
 - No CORS middleware: the frontend is served by the same app (same origin), so browsers need none; other sites can't call the API with the cookie.
 - Rate limits (routes/auth.py constants, rate_limit.py; in memory, reset on restart): login 20 / 15 min per IP + 10 per account; register 10 / hour per IP; verify-code 30 / 15 min per IP and **10 wrong codes / hour per IP** (below the 15 per account, so one attacker can't burn a victim's guesses); resend-code + send-login-code 10 / 15 min per IP; codes sent: **10 / day per account** (counted in otp_codes, survives restarts; send-login-code then quietly sends nothing) and 20 / day per IP. Over a limit → 429 `TOO_MANY_REQUESTS` + Retry-After. Tests: conftest turns the limiter off; test_rate_limit.py turns it on.
-- Profile username / email / phone changes: a UNIQUE clash found only by the database (two people at once) → 409 with USERNAME_TAKEN / EMAIL_IN_USE / PHONE_TAKEN.
+- Profile username / email changes: a UNIQUE clash found only by the database (two people at once) → 409 with USERNAME_TAKEN / EMAIL_IN_USE.
 
 ### API addresses
 All money routes need you to be logged in (401 otherwise).
 
 | Method + address | What it does |
 |---|---|
-| POST `/api/auth/register` ✅ | `{full_name?, username, email?, phone?, password, confirm_password}` (email and/or phone) → create an account |
-| POST `/api/auth/login` ✅ | `{email: email OR phone, password}` → check the password → send a code: email, or WhatsApp for phone-only accounts (423 = locked; WhatsApp not set up → 503 `PHONE_CODE_NOT_AVAILABLE`; WhatsApp failed → 503 `WHATSAPP_FAILED`) |
-| POST `/api/auth/send-login-code` ✅ | locked account → email a code |
-| POST `/api/auth/resend-code` ✅ | "Resend OTP": new code for the same email (429 within 30 s of the last one) |
+| POST `/api/auth/register` ✅ | `{full_name?, username, email, password, confirm_password}` → create an account |
+| POST `/api/auth/login` ✅ | `{email, password}` → check the password → email a code → `{code, expires_in, resend_wait, sent_to, demo_code?}` (423 = locked; 429 `TOO_MANY_CODES`; 503 `EMAIL_FAILED`) |
+| POST `/api/auth/send-login-code` ✅ | locked account → email a code; always the same `{message, code: LOCKED_CODE_SENT}` reply |
+| POST `/api/auth/resend-code` ✅ | `{email}` "Resend OTP": new code (429 `RESEND_WAIT` within 30 s, 429 `TOO_MANY_CODES`); same reply fields as login, never `demo_code` |
 | POST `/api/auth/verify-code` ✅ | check the code → log in (+ unlock) → set cookie (410 = code expired) |
 | GET `/api/auth/me` ✅ | `{full_name, username, email, language}` of who is logged in (401 if nobody) |
 | PUT `/api/auth/language` ✅ | `{language: en/fr/mfe}` saved on `profiles.language` so it follows the user across devices; `app.js` applies it after `/me` and saves each switch (`saveMyLanguage` in api.js, silent on failure); login page stays localStorage-only |
 | POST `/api/auth/logout` ✅ | log out (session deleted, cookie cleared) |
-| GET `/api/profile` ✅ | own `{full_name, username, email, phone, occupation}` — never the password hash |
+| GET `/api/profile` ✅ | own `{full_name, username, email, occupation}` — never the password hash |
 | PUT `/api/profile/name` ✅ | `{full_name?}` (old clients only; empty = no name) |
 | POST `/api/insights/quick` ✅ | `{month?}` → `{month, quick: [{code, params}]}` rule-based tips (50/30/20, top category, goals, loan share). **Never calls Groq**, no key needed |
 | PUT `/api/profile/username` ✅ | `{username}` (409 `USERNAME_TAKEN`) |
-| PUT `/api/profile/email` ✅ | `{email (empty = remove), current_password}` (400 `WRONG_PASSWORD`, 409 `EMAIL_IN_USE`, 400 `NEED_EMAIL_OR_PHONE`) |
-| PUT `/api/profile/phone` ✅ | `{phone (empty = remove), current_password}` (422 `INVALID_PHONE`, 409 `PHONE_TAKEN`, 400 `NEED_EMAIL_OR_PHONE`) |
+| PUT `/api/profile/email` ✅ | `{email, current_password}` (400 `WRONG_PASSWORD`, 409 `EMAIL_IN_USE`) |
 | PUT `/api/profile/occupation` ✅ | `{occupation}` (empty = remove) |
 | PUT `/api/profile/password` ✅ | `{current_password, new_password, confirm_password}` → `PASSWORD_CHANGED`; other sessions logged out |
 | GET `/api/summary?month=YYYY-MM` 🆕 | `info` (provided / none / missing) + income, spent, saved, left to spend, %s (each **null** when not given), category rows (spent / budget / over_by), fixed bills, last 3 expenses |
@@ -636,17 +634,6 @@ The app sends email through Gmail's normal mail server (SMTP) using an **App Pas
 3. Put them in `backend/.env` as `GMAIL_ADDRESS` and `GMAIL_APP_PASSWORD`.
 Gmail allows about 500 emails a day, which is plenty for a hackathon.
 
-### Login codes to phones — not built yet
-Phone-only accounts get their login code on **WhatsApp** through the **Twilio WhatsApp sandbox** (`backend/whatsapp_sender.py`, called only from `deliver_login_code()` in `routes/auth.py`; accounts with an email still get it by email).
-
-**Set it up (free trial, good for a demo — not for real users):**
-1. Create an account at twilio.com/try-twilio.
-2. Console → Messaging → Try it out → Send a WhatsApp message: note the **sandbox number** and your **join code**.
-3. On every phone that will log in, send `join <your-code>` to the sandbox number on WhatsApp (lasts 3 days, then send it again).
-4. `backend/.env`: `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM` (the sandbox number, e.g. `+14155238886`). Restart the server.
-- Limits: a trial includes a small number of free WhatsApp messages; only phones that joined the sandbox receive messages. Real users would need a paid Twilio account and an approved WhatsApp sender.
-- Without the keys, phone-only login answers 503 `PHONE_CODE_NOT_AVAILABLE`; tests always fake the sender (`sent_codes` fixture + `tests/backend/test_whatsapp_sender.py`), so they never call Twilio.
-
 ### OpenAI (speech-to-text backup only, in this task)
 | Feature | First choice (free, in the browser) | Backup (our backend calls it) | .env key |
 |---|---|---|---|
@@ -665,6 +652,7 @@ Never put the key in JS or commit it (`.env` is git-ignored).
 
 ### Keys you need to get
 0. **`GMAIL_ADDRESS` + `GMAIL_APP_PASSWORD`**: needed for login (see above).
+0b. **`DEMO_SHOW_OTP`** stays `false` (only `true` for a demo: shows the login code on screen).
 1. **`OPENAI_API_KEY`** (optional): platform.openai.com → API keys → Create key; add about $5 of credit. Without it, voice still works in Chrome on Android; other phones show "type it instead".
 
 ### `backend/.env.example`
@@ -681,6 +669,7 @@ AI_COOLDOWN_SECONDS=
 AI_MAX_OUTPUT_TOKENS=
 AI_MAX_INPUT_CHARS=
 AI_TIMEOUT_SECONDS=
+DEMO_SHOW_OTP=false
 ```
 
 ---

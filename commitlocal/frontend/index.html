@@ -527,7 +527,7 @@
             <button id="edit-email" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-email" data-i18n="common.edit">Edit</button>
           </div>
           <form id="form-email" class="account-form" novalidate hidden>
-            <label><span data-i18n="profile.newEmail">New email (empty = remove)</span> <input id="input-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"></label>
+            <label><span data-i18n="profile.newEmail">New email</span> <input id="input-email" type="email" autocomplete="email" autocapitalize="none" spellcheck="false" maxlength="254"></label>
             <label><span data-i18n="profile.currentPassword">Current password</span>
               <span class="password-wrap"><input id="input-email-password" type="password" autocomplete="current-password" maxlength="200">
                 <button class="password-toggle" type="button" data-show-for="input-email-password" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
@@ -535,27 +535,6 @@
             <p id="error-email" class="message error" role="alert"></p>
             <div class="account-actions">
               <button id="save-email" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
-              <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
-            </div>
-          </form>
-        </li>
-        <li class="account-row">
-          <div class="account-row-top">
-            <div class="account-row-text">
-              <span class="account-label" data-i18n="profile.phone">Phone number</span>
-              <span id="value-phone" class="account-value">…</span>
-            </div>
-            <button id="edit-phone" class="btn btn-small btn-light account-edit" type="button" aria-expanded="false" aria-controls="form-phone" data-i18n="common.edit">Edit</button>
-          </div>
-          <form id="form-phone" class="account-form" novalidate hidden>
-            <label><span data-i18n="profile.newPhone">Phone number (empty = remove)</span> <input id="input-phone" type="tel" inputmode="tel" autocomplete="tel" maxlength="20" placeholder="+230 5123 4567"></label>
-            <label><span data-i18n="profile.currentPassword">Current password</span>
-              <span class="password-wrap"><input id="input-phone-password" type="password" autocomplete="current-password" maxlength="200">
-                <button class="password-toggle" type="button" data-show-for="input-phone-password" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
-            <p class="muted small" data-i18n="profile.phoneNote">Mauritius numbers only. You can log in with it; you always keep an email or a phone number.</p>
-            <p id="error-phone" class="message error" role="alert"></p>
-            <div class="account-actions">
-              <button id="save-phone" class="btn btn-small" type="submit" data-i18n="common.save">Save</button>
               <button class="btn btn-small btn-light" type="button" data-cancel data-i18n="common.cancel">Cancel</button>
             </div>
           </form>
