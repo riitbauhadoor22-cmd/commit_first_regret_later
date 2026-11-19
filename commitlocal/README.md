@@ -71,3 +71,9 @@ node --test tests/frontend
 - Retrain the loan risk model: `backend\venv\Scripts\python backend\train_loan_risk_model.py --input backend\DATA\lending_club\loan.csv --out-dir backend\AI_model`
 
 *Estimates only – not financial advice.*
+
+## Live demo (hackathon)
+
+- Link: https://8d20477beb4c3e.app.lhr.life (temporary tunnel from the team laptop via localhost.run; works while the laptop server is running)
+- QR code: [demo-qr.png](demo-qr.png)
+- Demo mode: the login code is also shown on screen (DEMO_SHOW_OTP=true) so the demo never gets stuck.

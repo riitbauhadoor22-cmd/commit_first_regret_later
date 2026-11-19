@@ -2,6 +2,7 @@
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from config import docs_settings, is_production, log_app_mode
@@ -28,6 +29,7 @@ from services.inflation import load_cpi
 
 app = FastAPI(title="Finance PWA", **docs_settings())  # production: no /docs, /redoc, /openapi.json
 log_app_mode()  # "App mode: production / development" in the server log
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # compress pages/scripts: much faster on slow phones and links
 add_error_handlers(app)  # error replies carry a "code" the frontend translates (errors.py)
 create_tables()
 log_ai_status()  # "AI insights: ON / OFF" in the server log (the key itself is never logged)
