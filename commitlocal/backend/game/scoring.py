@@ -1,39 +1,40 @@
 # game/scoring.py — scores a Budget Challenge allocation out of 100 and explains why (deterministic, server-only).
-# Points: budget balance 30 · essential needs 25 · spending allocation (50·30·20, scenario-aware) 20 · savings 15 · events 10.
+# Points: budget balance 30 · essential needs 25 · spending allocation (plain 50·30·20) 20 · savings 15 · events 10.
 # Feedback = codes + numbers ({"code": "unassigned", "params": {"left": 1200}}); the frontend translates "game.tip.<code>".
 from game.budget_engine import effective_income, group_totals, minimums
-from game.scenarios import (BUFFER_PERCENT, GUIDE, POINTS, SAVINGS_GOAL_PERCENT, SPLIT_FULL_WITHIN, SPLIT_ZERO_AT)
+from game.scenarios import (BUFFER_PERCENT, GUIDE, POINTS, SAVINGS_GOAL_PERCENT, SAVINGS_SOME_POINTS, SPLIT_FULL_WITHIN,
+                            SPLIT_HALF_WITHIN, SPLIT_SHARES)
 from money import to_rupees
 
 
 # ===== PARTS =====
+def round_half_up(value):
+    """Rounds .5 up (Python's round() would make 12.5 -> 12)."""
+    return int(value + 0.5)
+
+
 def balance_points(left_percent):
-    """30 within income with ≤ 10% unallocated (a sensible buffer); 20 up to 25% unallocated; 10 above; 0 if over."""
+    """30 within income; 20 when more than 10% of income is left unallocated; 0 if over income."""
     if left_percent < 0:
         return 0
-    if left_percent <= BUFFER_PERCENT:
-        return POINTS["balance"]
-    return 20 if left_percent <= 25 else 10
+    return POINTS["balance"] if left_percent <= BUFFER_PERCENT else 20
 
 
-def allocation_targets(level, needed, income):
-    """50·30·20, but when this scenario's essential minimums already take more than 50%, Needs may be that high
-    (the extra comes out of Wants) — high-rent levels aren't punished for being realistic."""
-    kinds = {c["id"]: c["kind"] for c in level["categories"]}
-    need_floor = sum(cents for cid, cents in needed.items() if kinds[cid] == "need") * 100 / income
-    need = max(GUIDE["need"], need_floor)
-    return {"need": need, "want": max(0, GUIDE["want"] - (need - GUIDE["need"])), "savings": GUIDE["savings"]}
+def allocation_points(percents):
+    """Each group vs plain 50·30·20: full share within ±10 points, half share within ±20, else 0.
+    Shares: needs 7, wants 7, savings 6. Halves of 7 make x.5 totals: the total is rounded half up (16.5 -> 17)."""
+    total = 0
+    for kind, share in SPLIT_SHARES.items():
+        gap = abs(percents[kind] - GUIDE[kind])
+        total += share if gap <= SPLIT_FULL_WITHIN else share / 2 if gap <= SPLIT_HALF_WITHIN else 0
+    return round_half_up(total)
 
 
-def allocation_points(percents, targets):
-    """20 when close to the targets (distance ≤ 10 points), 0 when ≥ 50 away; Needs above target only count half."""
-    need_gap = percents["need"] - targets["need"]
-    distance = (need_gap / 2 if need_gap > 0 else -need_gap) + abs(percents["want"] - targets["want"]) \
-        + abs(percents["savings"] - targets["savings"])
-    if distance <= SPLIT_FULL_WITHIN:
-        return POINTS["allocation"]
-    share = max(0.0, (SPLIT_ZERO_AT - distance) / (SPLIT_ZERO_AT - SPLIT_FULL_WITHIN))
-    return round(POINTS["allocation"] * share)
+def savings_points(saved, income):
+    """0 if nothing saved; 10 if under 10% of income; 15 from 10% (no extra above 20%)."""
+    if saved <= 0:
+        return 0
+    return POINTS["savings"] if saved * 100 >= income * SAVINGS_GOAL_PERCENT else SAVINGS_SOME_POINTS
 
 
 # ===== SCORE =====
@@ -49,23 +50,23 @@ def score_allocation(level, cents, event=None, event_applied=True):
     percents = {kind: value * 100 / income for kind, value in groups.items()}
     needed = minimums(level, active)      # essential minimums after the event (cost raises, discount lowers)
     # Coverage uses the scenario minimums (a discount may lower them); a missed cost event only costs the 10 event points
-    coverage = minimums(level, active if active and active["type"] == "discount" else None)
-    targets = allocation_targets(level, needed, income)
+    # Only min_amount categories are essentials here: locked commitments (rent, loan) can't change, so they don't count
+    essential_ids = {c["id"] for c in level["categories"] if "min_amount" in c}
+    coverage = {cid: need for cid, need in minimums(level, active if active and active["type"] == "discount" else None).items()
+                if cid in essential_ids}
     tips = []
 
     # 1) Budget balance (30)
     balance = balance_points(left * 100 / income)
     # 2) Essential needs coverage (25): share of essentials at or above their minimum
     short = [cid for cid, need in coverage.items() if cents[cid] < need]
-    essentials = round(POINTS["essentials"] * (len(coverage) - len(short)) / len(coverage)) if coverage else POINTS["essentials"]
+    essentials = round_half_up(POINTS["essentials"] * (len(coverage) - len(short)) / len(coverage)) if coverage else POINTS["essentials"]
     # 3) Spending allocation awareness (20)
-    allocation = allocation_points(percents, targets)
-    # 4) Savings planning (15): Savings category up to 10% of income; no extra above, capped if essentials are short
+    allocation = allocation_points(percents)
+    # 4) Savings planning (15): the Savings category as a % of income
     goal = income * SAVINGS_GOAL_PERCENT / 100
     saved = cents.get("savings", 0)
-    savings = round(POINTS["savings"] * min(1.0, saved / goal))
-    if short and saved > 0:
-        savings = min(savings, 5)
+    savings = savings_points(saved, income)
     # 5) Handling unexpected events (10)
     if event is None:
         events = POINTS["events"]  # events off: automatic, so scores stay comparable
@@ -84,9 +85,9 @@ def score_allocation(level, cents, event=None, event_applied=True):
     if short and saved > 0:
         tips.append({"code": "save_vs_essentials", "params": {}})
     if percents["need"] > GUIDE["need"]:
-        realistic = percents["need"] <= targets["need"] + 5
+        realistic = percents["need"] <= GUIDE["need"] + SPLIT_FULL_WITHIN  # still full allocation points
         tips.append({"code": "high_needs_ok" if realistic else "needs_high", "params": {"n": round(percents["need"])}})
-    if percents["want"] > targets["want"] + 5:
+    if percents["want"] > GUIDE["want"] + 5:
         tips.append({"code": "large_wants", "params": {"n": round(percents["want"])}})
     if saved == 0:
         tips.append({"code": "no_savings", "params": {}})
@@ -108,6 +109,6 @@ def score_allocation(level, cents, event=None, event_applied=True):
         "income": to_rupees(income), "total": to_rupees(total), "left": to_rupees(left),
         "totals": {kind: to_rupees(value) for kind, value in groups.items()},
         "percents": {kind: round(value, 1) for kind, value in percents.items()},
-        "targets": {kind: round(value, 1) for kind, value in targets.items()},
+        "targets": dict(GUIDE),
         "tips": tips,
     }

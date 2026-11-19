@@ -1,1 +1,2 @@
-https://8d20477beb4c3e.app.lhr.life
+https://<name>.onrender.com/login.html
+(Replace <name> with the Render service name after the first deploy. The old tunnel link no longer works.)

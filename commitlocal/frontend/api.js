@@ -43,6 +43,9 @@ function formatErrorParams(params) {
   const result = Object.assign({}, params);
   if (typeof result.saved === "number") result.saved = formatMoney(result.saved);
   if (typeof result.over === "number") result.over = formatMoney(result.over); // game: over income
+  if (typeof result.short === "number") result.short = formatMoney(result.short); // game: event shortfall
+  if (typeof result.available === "number") result.available = formatMoney(result.available); // savings: take out
+  if (typeof result.left === "number") result.left = formatMoney(result.left); // savings: what a goal still needs
   return result;
 }
 
@@ -78,6 +81,8 @@ function deleteExpense(id) { return callApi("DELETE", "/api/expenses/" + id); }
 
 // Guessed category for a note ("KFC 350") — own history first, then keywords. Nothing is saved.
 function suggestCategory(text) { return callApi("GET", "/api/expenses/suggest-category?text=" + encodeURIComponent(text)); }
+// 📷 Scan bill: image = a data URL; the answer only fills in the form (nothing is saved)
+function scanBill(image) { return callApi("POST", "/api/expenses/scan-bill", { image: image }); }
 function getCategoryKeywords() { return callApi("GET", "/api/expenses/category-keywords"); } // kept on the phone for offline
 // Spending forecast + goal ready-by months (plain maths). today = the phone's local date.
 function getForecast(today, month) { return callApi("GET", "/api/forecast?today=" + today + "&month=" + month); }
@@ -126,7 +131,11 @@ function getSavings() { return callApi("GET", "/api/savings"); }
 function updateSavings(bankBalance, monthlyTarget) {
   return callApi("PUT", "/api/savings", { bank_balance: bankBalance, monthly_target: monthlyTarget });
 }
-function addToSafetyNet(amount) { return callApi("POST", "/api/savings/safety-net/add-money", { amount: amount }); }
+// Real savings: "Add to savings" / "Take out" entries (they move total savings and the safety net / goal picked)
+function getSavingsEntries(month) { return callApi("GET", "/api/savings/entries?month=" + month); }
+function addSavingsEntry(entry) { return callApi("POST", "/api/savings/entries", entry); }
+function editSavingsEntry(id, entry) { return callApi("PUT", "/api/savings/entries/" + id, entry); }
+function deleteSavingsEntry(id) { return callApi("DELETE", "/api/savings/entries/" + id); }
 
 function getGoals() { return callApi("GET", "/api/goals"); }
 function addGoal(goal) { return callApi("POST", "/api/goals", goal); }
@@ -140,7 +149,6 @@ function getInflationPreview(query) { return callApi("GET", "/api/inflation/proj
 // ===== LOANS TAB =====
 // details = { monthly_income, monthly_expenses, existing_debt_payment, interest_rate, years, missed_payment }
 function predictLoan(details) { return callApi("POST", "/api/loans/predict", details); }
-function addMoneyToGoal(id, amount) { return callApi("POST", "/api/goals/" + id + "/add-money", { amount: amount }); }
 
 // ===== ARCADE: BUDGET CHALLENGE (scores and XP are worked out on the server) =====
 function getGameLevels() { return callApi("GET", "/api/game/levels"); }
@@ -152,3 +160,13 @@ function submitGameAttempt(attemptId, allocation, isFinal) {
   return callApi("POST", "/api/game/attempts/" + attemptId + "/submit", { allocation: allocation, final: isFinal });
 }
 function getGameAttempts() { return callApi("GET", "/api/game/attempts"); }
+
+// ===== MY BUDGET PLAN (rules are checked by the backend; today = the phone's local date) =====
+function getPlan(today) { return callApi("GET", "/api/plan?today=" + encodeURIComponent(today)); }
+function previewStartPlan(answers) { return callApi("POST", "/api/plan/start/preview", answers); }
+function startPlan(answers) { return callApi("POST", "/api/plan/start", answers); }
+function previewPlanChange(planId, today) {
+  return callApi("GET", "/api/plan/preview?plan_id=" + encodeURIComponent(planId) + "&today=" + encodeURIComponent(today));
+}
+function changePlan(change) { return callApi("POST", "/api/plan/change", change); }
+function cancelPlanChange(today) { return callApi("DELETE", "/api/plan/pending?today=" + encodeURIComponent(today)); }

@@ -21,6 +21,7 @@ from routes.insights import router as insights_router
 from routes.inflation import router as inflation_router
 from routes.loans import router as loans_router
 from routes.my_loans import router as my_loans_router
+from routes.plan import router as plan_router
 from routes.profile import router as profile_router
 from routes.savings import router as savings_router
 from routes.summary import router as summary_router
@@ -49,6 +50,7 @@ app.include_router(forecast_router)  # spending forecast + goal ready-by dates (
 app.include_router(info_router)  # optional info: provided / none / missing
 app.include_router(my_loans_router)  # saved loans (optional)
 app.include_router(insights_router)  # Financial insights (Groq only on the button)
+app.include_router(plan_router)  # My budget plan (commitment rules enforced here)
 app.include_router(profile_router)  # Profile tab: own account details (never the password hash)
 
 

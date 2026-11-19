@@ -1,7 +1,9 @@
-# render.yaml — tells Render (render.com) how to put the app online (free plan, https link).
-# Render reads this file from the top of the GitHub repo ("Blueprint"). The database is a free PostgreSQL on Neon
-# (DATABASE_URL); Render's own disk is wiped on every restart, so SQLite can't be used there.
-# Secret values are typed into Render's dashboard (sync: false) — never into this file or git.
+# render.yaml — Render Blueprint for the app (free Web Service, fixed https://<name>.onrender.com link).
+# Render reads THIS file (top of the repo) by default; there is no other copy. The app (commitlocal/backend) serves the
+# API and the frontend from the same address, so no CORS is needed. The database is a free hosted PostgreSQL (Neon):
+# paste its URL as DATABASE_URL. Render's disk is wiped on every restart, so SQLite can't be used there.
+# sync: false = you type the value in Render's dashboard (never in this file or git).
+# Back up Neon (Branches → Create branch) before every deploy: migrations run when the app starts.
 services:
   - type: web
     name: my-money
@@ -9,19 +11,27 @@ services:
     plan: free
     rootDir: commitlocal/backend
     buildCommand: pip install -r requirements.txt
+    # Alembic migrations run when the app starts (main.py → create_tables). No --reload in production.
     # --proxy-headers: Render serves https in front of the app, so login cookies are marked secure
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips "*"
-    healthCheckPath: /login.html
+    healthCheckPath: /health
+    autoDeploy: true               # every push to the connected branch redeploys
     envVars:
       - key: PYTHON_VERSION
-        value: "3.13.1"
-      - key: DATABASE_URL        # Neon connection string (postgresql://...?sslmode=require)
+        value: 3.14.0
+      - key: APP_ENV               # production: Secure cookies, HSTS, no /docs, DEMO_TODAY ignored
+        value: production
+      - key: DATABASE_URL          # required: Neon connection string (postgresql://...?sslmode=require)
         sync: false
-      - key: GMAIL_ADDRESS
+      - key: GMAIL_ADDRESS         # required: the Gmail that sends login codes
         sync: false
-      - key: GMAIL_APP_PASSWORD
+      - key: GMAIL_APP_PASSWORD    # required: its 16-letter Gmail App Password
         sync: false
-      - key: GROQ_API_KEY
+      - key: GROQ_API_KEY          # optional: AI insights + Scan bill
         sync: false
-      - key: DEMO_SHOW_OTP       # "true" only during a live demo
+      - key: GROQ_MODEL            # optional: empty = openai/gpt-oss-20b
+        sync: false
+      - key: GROQ_VISION_MODEL     # optional: empty = qwen/qwen3.8-27b (Groq vision models are preview models)
+        sync: false
+      - key: DEMO_SHOW_OTP         # optional: empty / false = off. "true" ONLY during a live demo (code on screen)
         sync: false

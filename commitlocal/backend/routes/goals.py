@@ -12,6 +12,7 @@ from models import AddMoneyForm, Deposit, GoalForm, Income, SavingsGoal
 from money import (get_amount_to_add, get_goal_statuses, get_goals_warning, get_monthly_target,
                    get_this_month, get_today, to_cents, to_money, to_rupees)
 from routes.auth import require_user
+from savings_entries import apply_entry
 from services.inflation import project_goal
 
 router = APIRouter(prefix="/api/goals")
@@ -100,16 +101,17 @@ def goal_inflation_projection(goal_id: uuid.UUID, user_id: uuid.UUID = Depends(r
 
 @router.post("/{goal_id}/add-money")
 def add_money_to_goal(goal_id: uuid.UUID, form: AddMoneyForm, user_id: uuid.UUID = Depends(require_user)):
-    """Save a deposit and add it to the goal. Never fills a goal past its target. The goal's money is set aside
-    from the bank balance (not new money), so the bank balance itself does NOT change."""
+    """A deposit into the goal today (adds to the goal AND total savings, savings_entries.py). Never fills a goal
+    past its target: only what it still needs is added."""
     with open_db() as db:
         goal = find_goal(db, goal_id, user_id)
         amount = get_amount_to_add(form.amount, to_rupees(goal.target_cents), to_rupees(goal.saved_cents))
         if amount <= 0:
             raise AppError(400, "GOAL_COMPLETE", "This goal is already complete.")
         cents = to_cents(amount)
-        db.add(Deposit(user_id=user_id, goal_id=goal.id, amount_cents=cents, date=datetime.date.today()))
-        goal.saved_cents += cents
+        apply_entry(db, user_id, "deposit", "goal", goal.id, cents)
+        db.add(Deposit(user_id=user_id, kind="deposit", place="goal", goal_id=goal.id, amount_cents=cents,
+                       date=datetime.date.today()))
         db.flush()
         info = build_goals_info(db, user_id)
     info["added"] = amount

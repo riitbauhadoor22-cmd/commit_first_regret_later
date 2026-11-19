@@ -13,10 +13,13 @@
 # ===== SCORING RULES (points out of 100) =====
 POINTS = {"balance": 30, "essentials": 25, "allocation": 20, "savings": 15, "events": 10}
 GUIDE = {"need": 50, "want": 30, "savings": 20}  # the 50·30·20 guideline (percent of income)
-BUFFER_PERCENT = 10           # up to 10% of income left unallocated still counts as a sensible buffer
+BUFFER_PERCENT = 10           # more than 10% of income left unallocated -> 20 balance points instead of 30
 SAVINGS_GOAL_PERCENT = 10     # the Savings category reaching 10% of income gets full savings points (no extra above)
-SPLIT_FULL_WITHIN = 10        # allocation distance (percentage points) still worth full allocation points
-SPLIT_ZERO_AT = 50            # distance where allocation points reach 0
+SAVINGS_SOME_POINTS = 10      # savings above 0 but under 10% of income
+SPLIT_SHARES = {"need": 7, "want": 7, "savings": 6}  # allocation points per group (total 20)
+SPLIT_FULL_WITHIN = 10        # a group within ±10 percentage points of its guide share -> full share
+SPLIT_HALF_WITHIN = 20        # within ±20 -> half share; further -> 0
+MIN_SHARE_MAX = 85            # all minimums + locked amounts must fit in 85% of a level's income
 XP_FIRST_COMPLETION_BONUS = 20  # one-time bonus the first time each level is completed
 
 # ===== LEVELS =====

@@ -78,6 +78,7 @@ def sent_codes(monkeypatch):
     return codes
 
 
+FAKE_BILL_REPLY = '{"amount": 245.5, "date": null, "shop": "Winners", "category": "Groceries"}'
 FAKE_AI_REPLY = ('{"overview": "Fictional overview.", "observations": ["Fictional observation."], '
                  '"suggestions": [{"title": "Tip", "description": "Fictional tip.", "reason": "Fictional reason.", '
                  '"priority": "medium"}], "savings_analysis": "Fictional savings note.", "encouragement": "Keep going!"}')
@@ -101,6 +102,18 @@ def fake_groq(monkeypatch):
         return state["reply"]
 
     monkeypatch.setattr(ai_insights, "send_to_groq", fake_send)
+
+    from services import bill_scan
+
+    def fake_scan(body, settings):  # bill photos: same fake, reply from state["bill_reply"]
+        state["scan_calls"] = state.get("scan_calls", 0) + 1
+        state["last_scan_body"] = body
+        reply = state.get("bill_reply", FAKE_BILL_REPLY)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(bill_scan, "send_scan", fake_scan)
     yield state
     ai_insights.reset_guards()
 

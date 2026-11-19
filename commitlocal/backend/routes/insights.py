@@ -18,6 +18,7 @@ from errors import AppError
 from models import (AiRequestLog, Deposit, Expense, Income, InsightRequestForm, MyLoan, SavedInsight, SavingsGoal,
                     iso, utc_now)
 from money import get_this_month, get_today
+from services.bill_scan import SCAN_LOG_MONTH
 from routes.auth import require_user
 from routes.info import read_info_status
 from routes.summary import MONTH_PATTERN
@@ -48,11 +49,13 @@ def describe_saved(saved, fingerprint):
             "insight": json.loads(saved.content), "generated_at": iso(saved.created_at) + "Z", "model": saved.model}
 
 
-def get_usage(db, user_id, settings):
-    """AI requests used today (UTC day) and seconds left before the next one is allowed."""
+def get_usage(db, user_id, settings, scans=False):
+    """AI requests used today (UTC day) and seconds left before the next one is allowed.
+    scans=True counts bill scans only (routes/expenses.py); otherwise bill scans are left out."""
     now = utc_now()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    mine = AiRequestLog.user_id == user_id
+    kind = (AiRequestLog.month == SCAN_LOG_MONTH) if scans else (AiRequestLog.month != SCAN_LOG_MONTH)
+    mine = (AiRequestLog.user_id == user_id) & kind
     used = db.scalar(select(func.count()).select_from(AiRequestLog).where(mine, AiRequestLog.created_at >= day_start))
     last = db.scalar(select(func.max(AiRequestLog.created_at)).where(mine))
     wait = 0

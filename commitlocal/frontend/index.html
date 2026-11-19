@@ -241,6 +241,7 @@
         <div class="stat"><p class="label" data-i18n="money.out">Out</p><p id="sum-out" class="value out"></p></div>
         <div class="stat"><p class="label" data-i18n="money.saved">Saved</p><p id="sum-saved" class="value saved"></p></div>
       </div>
+      <div id="savings-status" class="savings-status" aria-live="polite"></div> <!-- encouraging savings message -->
       <div id="split-bar" class="split-bar" aria-hidden="true">
         <span id="split-needs" class="split-needs"></span>
         <span id="split-wants" class="split-wants"></span>
@@ -255,6 +256,16 @@
         <p id="money-forecast-left"></p>
       </div>
       <div id="money-prompts" class="stack"></div> <!-- only shown for information the user hasn't given -->
+    </section>
+
+    <!-- My budget plan (budget-plan.js): plan, this month vs its aim, streak, suggestion, change / history -->
+    <section id="plan-card" class="card plan-card" aria-labelledby="plan-title">
+      <div class="card-head">
+        <h3 id="plan-title" data-i18n="plan.title">My budget plan</h3>
+        <button id="plan-why-btn" class="link-btn" type="button" data-i18n="plan.whyLink" hidden>Why this plan?</button>
+      </div>
+      <div id="plan-body" class="stack" aria-live="polite"></div>
+      <p class="muted small" data-i18n="plan.disclaimer">Budget rules are starting points, not financial advice.</p>
     </section>
 
     <!-- Money in / Money out / Savings switch -->
@@ -324,11 +335,22 @@
       <section class="card dark" aria-label="Saved in your bank" data-i18n-aria="targets.savedInBank">
         <div class="card-head">
           <p class="label" data-i18n="targets.savedInBank">Saved in your bank</p>
-          <button id="bank-edit-btn" class="link-btn on-dark" type="button" data-i18n="targets.update">Update</button>
+          <button id="bank-edit-btn" class="link-btn on-dark" type="button" data-i18n="targets.updateTotal">Update total</button>
         </div>
         <p id="bank-balance" class="big-number">…</p>
         <div id="bank-bar" class="split-bar" aria-hidden="true"></div>
         <p id="bank-legend" class="split-legend"></p>
+        <div class="info-actions">
+          <button id="savings-add-btn" class="btn btn-small" type="button" data-i18n="savings.addButton">+ Add to savings</button>
+          <button id="savings-out-btn" class="btn btn-small btn-light" type="button" data-i18n="savings.takeOutButton">Take out</button>
+        </div>
+      </section>
+
+      <!-- This month's "Add to savings" / "Take out" entries (tap one to edit or delete it) -->
+      <section class="card">
+        <h2 data-i18n="savings.entriesTitle">Added and taken out this month</h2>
+        <ul id="entry-list" class="item-list"></ul>
+        <p id="entry-empty" class="muted" data-i18n="savings.entriesEmpty">Nothing yet this month. Tap "+ Add to savings" when you put money aside.</p>
       </section>
 
       <!-- Monthly saving target + this month's progress -->
@@ -711,6 +733,13 @@
             <input id="expense-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
           </span>
         </label>
+        <!-- 📷 Scan bill: the camera / gallery opens through a normal file picker (no permission pop-up) -->
+        <div class="scan-bill">
+          <button id="scan-bill-btn" class="btn btn-small btn-light" type="button" data-i18n="expense.scanBill">📷 Scan bill</button>
+          <input id="scan-bill-input" type="file" accept="image/*" capture="environment" hidden>
+          <p class="muted small" data-i18n="expense.scanNote">Your photo is only used to read the bill and is not saved.</p>
+          <p id="scan-bill-status" class="small" role="status" aria-live="polite" hidden></p>
+        </div>
 
         <fieldset>
           <legend data-i18n="expense.category">Category</legend>
@@ -729,6 +758,7 @@
         <label><span data-i18n="common.note">Note</span> <input id="expense-note" type="text" maxlength="100" placeholder="e.g. Lunch" data-i18n-placeholder="expense.notePlaceholder"></label>
         <label><span data-i18n="common.date">Date</span> <input id="expense-date" type="date" required></label>
         <label class="check"><input id="expense-fixed" type="checkbox"> <span data-i18n="expense.repeats">Repeats every month (fixed bill)</span></label>
+        <label id="expense-weekly-row" class="check" hidden><input id="expense-weekly" type="checkbox"> <span data-i18n="expense.weekly">Every week instead (counted × 52 ÷ 12 a month)</span></label>
 
         <p id="expense-error" class="message error" role="alert"></p>
         <button id="expense-save" class="btn" type="submit" data-i18n="common.save">Save</button>
@@ -793,7 +823,7 @@
             <input id="bank-amount" type="number" inputmode="decimal" step="0.01" min="0" placeholder="0" required>
           </span>
         </label>
-        <p class="muted" data-i18n="targets.bankHelp">Check your bank app and type the amount. Money you add to goals is added here automatically.</p>
+        <p class="muted" data-i18n="targets.bankHelp">Your starting balance: check your bank app and type the amount. It isn't counted as saved this month. After this, "Add to savings" and "Take out" update it for you.</p>
         <p id="bank-error" class="message error" role="alert"></p>
         <button class="btn" type="submit" data-i18n="common.save">Save</button>
       </form>
@@ -863,19 +893,26 @@
     <div class="sheet-box">
       <header class="sheet-head">
         <button class="link-btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
-        <h2 id="money-title" data-i18n="targets.addMoney">Add money</h2>
+        <h2 id="money-title" data-i18n="savings.addTitle">Add to savings</h2>
         <span></span>
       </header>
       <form id="money-form" novalidate>
-        <label><span data-i18n="targets.moneyQuestion">How much are you putting away?</span>
+        <div class="toggle">
+          <button class="choice" type="button" data-entry-kind="deposit" data-i18n="savings.kindIn">Add to savings</button>
+          <button class="choice" type="button" data-entry-kind="withdrawal" data-i18n="savings.kindOut">Take out</button>
+        </div>
+        <label><span data-i18n="common.amount">Amount</span>
           <span class="amount-box">
             <span>Rs</span>
             <input id="money-amount" type="number" inputmode="decimal" step="0.01" min="0.01" placeholder="0" required>
           </span>
         </label>
+        <label><span data-i18n="common.date">Date</span> <input id="money-date" type="date" required></label>
+        <label><span id="money-place-label" data-i18n="savings.placeIn">Where does it go?</span> <select id="money-place"></select></label>
         <p id="money-hint" class="muted"></p>
         <p id="money-error" class="message error" role="alert"></p>
-        <button id="money-save" class="btn" type="submit" data-i18n="targets.addMoney">Add money</button>
+        <button id="money-save" class="btn" type="submit" data-i18n="common.save">Save</button>
+        <button id="money-delete" class="btn btn-danger" type="button" hidden data-i18n="savings.delete">Delete this entry</button>
       </form>
     </div>
   </div>
@@ -939,6 +976,7 @@
         <label><span data-i18n="expense.noteOptional">Note (optional)</span> <input id="cat-expense-note" type="text" maxlength="100" placeholder="e.g. Vegetables" data-i18n-placeholder="expense.notePlaceholder2"></label>
         <label><span data-i18n="common.date">Date</span> <input id="cat-expense-date" type="date" required></label>
         <label class="check"><input id="cat-expense-fixed" type="checkbox"> <span data-i18n="expense.repeats">Repeats every month (fixed bill)</span></label>
+        <label id="cat-expense-weekly-row" class="check" hidden><input id="cat-expense-weekly" type="checkbox"> <span data-i18n="expense.weekly">Every week instead (counted × 52 ÷ 12 a month)</span></label>
         <p id="cat-expense-error" class="message error" role="alert"></p>
         <button id="cat-expense-save" class="btn" type="submit" data-i18n="expense.saveExpense">Save expense</button>
         <button id="cat-expense-cancel" class="btn btn-light" type="button" hidden data-i18n="expense.cancelEdit">Cancel edit</button>
@@ -1034,6 +1072,55 @@
     </div>
   </div>
 
+  <!-- ===================== POP-UPS: BUDGET PLAN (budget-plan.js) ===================== -->
+  <div id="sheet-plan-start" class="sheet" role="dialog" aria-modal="true" aria-labelledby="plan-start-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close data-i18n="common.cancel">Cancel</button>
+        <h2 id="plan-start-title" data-i18n="plan.start.title">Find your plan</h2>
+        <span></span>
+      </header>
+      <form id="plan-start-form" class="stack" novalidate>
+        <fieldset>
+          <legend data-i18n="plan.start.life">Are you studying, working, or both?</legend>
+          <div class="toggle">
+            <button class="choice" type="button" data-life="studying" data-i18n="plan.start.studying">Studying</button>
+            <button class="choice" type="button" data-life="working" data-i18n="plan.start.working">Working</button>
+            <button class="choice" type="button" data-life="both" data-i18n="plan.start.both">Both</button>
+          </div>
+        </fieldset>
+        <label class="check"><input id="plan-rent" type="checkbox"> <span data-i18n="plan.start.rent">I pay rent or a home contribution</span></label>
+        <label class="check"><input id="plan-loan" type="checkbox"> <span data-i18n="plan.start.loan">I have a loan</span></label>
+        <label class="check"><input id="plan-irregular" type="checkbox"> <span data-i18n="plan.start.irregular">My income changes a lot from month to month</span></label>
+        <p id="plan-start-error" class="message error" role="alert"></p>
+        <button class="btn" type="submit" data-i18n="plan.start.suggest">Suggest my plan</button>
+      </form>
+      <div id="plan-start-result" class="stack" hidden></div>
+    </div>
+  </div>
+
+  <div id="sheet-plan-change" class="sheet" role="dialog" aria-modal="true" aria-labelledby="plan-change-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close data-i18n="common.close">Close</button>
+        <h2 id="plan-change-title" data-i18n="plan.change.title">Change plan</h2>
+        <span></span>
+      </header>
+      <div id="plan-change-body" class="stack"></div>
+    </div>
+  </div>
+
+  <div id="sheet-plan-why" class="sheet" role="dialog" aria-modal="true" aria-labelledby="plan-why-title" hidden>
+    <div class="sheet-box">
+      <header class="sheet-head">
+        <button class="link-btn" type="button" data-close data-i18n="common.close">Close</button>
+        <h2 id="plan-why-title" data-i18n="plan.whyTitle">Why this plan?</h2>
+        <span></span>
+      </header>
+      <div id="plan-why-body" class="stack"></div>
+    </div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="i18n.js"></script> <!-- languages: must load before the other scripts -->
@@ -1053,5 +1140,6 @@
   <script src="jar-calc.js"></script> <!-- coin positions for the savings jar -->
   <script src="dashboard.js"></script> <!-- needs drawLoanChart (loans-tab.js), JarCalc, STATUS_KEYS -->
   <script src="profile-tab.js"></script> <!-- Profile: account, weekly budget + badges, settings -->
+  <script src="budget-plan.js"></script> <!-- My budget plan card + its pop-ups (Money tab) -->
 </body>
 </html>

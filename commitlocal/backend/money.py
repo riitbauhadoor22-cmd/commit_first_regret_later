@@ -147,10 +147,15 @@ def get_category_spending(expenses, budgets, month):
 
 
 # ===== SAVINGS =====
+def entry_sign(entry):
+    """+1 for money put into savings, −1 for money taken out (rows without a kind are deposits)."""
+    return -1 if entry.get("kind") == "withdrawal" else 1
+
+
 def get_saved_in_month(deposits, month):
-    """All deposits (goals + safety net) dated this month. These only set aside money that is already in the bank
-    balance, so they are NOT "saved this month" (see services/month_summary.py); used for goal history only."""
-    return get_total([d for d in deposits if get_month_of(d["date"]) == month])
+    """Saved this month = savings deposits − withdrawals dated in this month (goals, safety net and general
+    savings together). Can be below 0 when more was taken out than put in."""
+    return to_money(sum(entry_sign(d) * d["amount"] for d in deposits if get_month_of(d["date"]) == month))
 
 
 def get_monthly_target(custom_target, incomes, month):

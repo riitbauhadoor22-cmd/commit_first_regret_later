@@ -8,10 +8,12 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from database import get_user_rows, open_db, read_savings_values
-from models import Budget, Expense, Income, MyLoan
+from budget_plans import PLANS
+from models import Budget, Deposit, Expense, Income, MyLoan, PlanPeriod
 from money import get_month_lists, get_this_month
 from routes.auth import require_user
 from routes.info import read_info_status
+from services.budget_plan import active_plan_id
 from services.month_summary import build_month_summary
 
 router = APIRouter(prefix="/api")
@@ -28,7 +30,12 @@ def read_summary(month: Optional[str] = Query(default=None, pattern=MONTH_PATTER
         expenses = get_user_rows(db, Expense, user_id)
         budgets = get_user_rows(db, Budget, user_id)
         loans = get_user_rows(db, MyLoan, user_id)
+        deposits = get_user_rows(db, Deposit, user_id)  # savings entries: Saved = put in − taken out
         savings = read_savings_values(db, user_id)
         info = read_info_status(db, user_id, month)  # missing income / expenses → None, never Rs 0
-    flows = build_month_summary(incomes, expenses, loans, savings, info, month)  # the ONE shared month maths
-    return {**flows, **get_month_lists(expenses, budgets, month)}
+        plan_id = active_plan_id(get_user_rows(db, PlanPeriod, user_id), month)
+    flows = build_month_summary(incomes, expenses, loans, savings, info, month,
+                                deposits=deposits)  # the ONE shared month maths
+    # plan_aim: the Needs / Wants / Savings targets of the plan active that month (None = no plan → 50 · 30 · 20)
+    plan_aim = {part: PLANS[plan_id][part] for part in ("needs", "wants", "savings")} if plan_id else None
+    return {**flows, **get_month_lists(expenses, budgets, month), "plan_aim": plan_aim}

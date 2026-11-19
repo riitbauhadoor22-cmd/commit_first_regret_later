@@ -9,11 +9,12 @@ from sqlalchemy import func, select, update
 
 from database import find_user_row, open_db
 from errors import AppError
-from game.budget_engine import check_within_income, clean_allocation
+from game.budget_engine import check_within_income, clean_allocation, event_shortfall
 from game.events import choose_event
 from game.scenarios import LEVELS, POINTS, XP_FIRST_COMPLETION_BONUS, get_event, get_level
 from game.scoring import score_allocation
 from models import GameAttempt, GameStartForm, GameSubmitForm, utc_now
+from money import to_rupees
 from routes.auth import require_user
 
 router = APIRouter(prefix="/api/game")
@@ -75,6 +76,8 @@ def submit_attempt(attempt_id: uuid.UUID, form: GameSubmitForm, user_id: uuid.UU
                 raise AppError(400, "GAME_FINAL_NEEDED", "You already adjusted once: submit your final budget.")
             check_within_income(level, allocation, None)  # over income is blocked
             result = score_allocation(level, allocation, event, event_applied=False)
+            # Rupees the revealed event pushes this budget over income (0 = fine): the player must fix it before finishing
+            result["shortfall"] = to_rupees(event_shortfall(level, allocation, event))
             if event is not None:
                 attempt.stage = "event"
             return build_reply(attempt, level, result)
@@ -82,8 +85,12 @@ def submit_attempt(attempt_id: uuid.UUID, form: GameSubmitForm, user_id: uuid.UU
         if event is not None and attempt.stage != "event":
             raise AppError(400, "GAME_EVENT_PENDING", "Submit your first budget to see the surprise event.")
 
-        # Final submit: score with the event, XP = score (+ bonus the first time this level is completed)
+        # Final submit: score with the event. Over income -> blocked; nothing changes, so it can be retried until valid, XP = score (+ bonus the first time this level is completed)
         check_within_income(level, allocation, event)
+        short = event_shortfall(level, allocation, event)
+        if short > 0:  # the event's raised minimum doesn't fit yet: blocked like over income (retry until fixed)
+            raise AppError(400, "GAME_EVENT_SHORTFALL", f"This event leaves you Rs {to_rupees(short):,.0f} short.",
+                           {"short": to_rupees(short)})
         result = score_allocation(level, allocation, event)
         done_before = db.scalar(select(func.count()).select_from(GameAttempt).where(
             GameAttempt.user_id == user_id, GameAttempt.level == attempt.level, GameAttempt.stage == "done"))

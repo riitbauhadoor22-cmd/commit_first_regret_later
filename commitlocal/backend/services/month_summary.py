@@ -6,11 +6,10 @@
 #   bank_savings_balance  = money ALREADY in the bank (Money → Savings → "Update"). A balance, not a monthly flow:
 #                           it is never part of In, Out, Saved, Left to spend, the split or the forecast.
 #   monthly_saving_target = what the user plans to save each month ("Change"), or 20% of regular income.
-#   saved_this_month      = what is put away THIS month = the monthly saving target. The app has no "I moved money
-#                           into savings" log: goal / safety-net "Add money" only sets aside part of the bank
-#                           balance, so those deposits are NOT counted as this month's saving.
-from money import (get_fixed_bills, get_monthly_income, get_monthly_target, get_month_of, get_percent, get_total,
-                   get_total_by_kind, get_total_spent, to_money)
+#   saved_this_month      = REAL money: "Add to savings" − "Take out" entries dated this month (deposits table,
+#                           any place: general, safety net or a goal). The target is only the goal it's compared with.
+from money import (get_fixed_bills, get_monthly_income, get_monthly_target, get_month_of, get_percent,
+                   get_saved_in_month, get_total, get_total_by_kind, get_total_spent, to_money)
 from services.forecast import build_spending_forecast
 
 KNOWN = ("provided", "none")  # same rule as info_status.is_known
@@ -44,14 +43,12 @@ def get_loans_not_in_bills(loans, fixed_bills, month):
 
 
 # ===== SAVINGS =====
-def get_saved_this_month(savings_state, monthly_target):
-    """saved_this_month: "I'm not saving right now" → 0 · savings never mentioned → None (shown "—") ·
-    otherwise the planned monthly saving target (None if there is no target to plan with)."""
-    if savings_state == "none":
-        return 0.0
+def get_saved_this_month(savings_state, deposits, month):
+    """saved_this_month: savings never mentioned → None (shown "—") · otherwise money put into savings − money
+    taken out this month (0 when nothing was added, also for "I'm not saving right now")."""
     if savings_state == "missing":
         return None
-    return monthly_target
+    return get_saved_in_month(deposits, month)
 
 
 def get_saving_progress(saved, target):
@@ -62,6 +59,21 @@ def get_saving_progress(saved, target):
     saved = saved or 0
     return {"state": "ok", "percent": min(get_percent(saved, target), 100.0), "reached": saved >= target,
             "extra": to_money(max(saved - target, 0))}
+
+
+def get_savings_status(savings_state, saved, target):
+    """Which encouraging savings message to show (never blaming): {"code", "saved", "target"}.
+    NOT_TRACKED = savings never added (not counted as off plan) · NONE_YET = "I'm not saving" or nothing saved yet ·
+    BELOW_TARGET / ON_TARGET = compared with the monthly saving target · SAVED_NO_TARGET = saved, but no target."""
+    if savings_state == "missing" or saved is None:
+        code = "NOT_TRACKED"
+    elif savings_state == "none" or saved <= 0:
+        code = "NONE_YET"
+    elif not target:
+        code = "SAVED_NO_TARGET"
+    else:
+        code = "ON_TARGET" if saved >= target else "BELOW_TARGET"
+    return {"code": code, "saved": saved, "target": target}
 
 
 # ===== 50 / 30 / 20 SPLIT =====
@@ -81,10 +93,11 @@ def build_split(income, needs, wants, saved, loans):
 
 
 # ===== THE MONTH SUMMARY =====
-def build_month_summary(incomes, expenses, loans, savings_values, info, month, today=None, budgets=()):
+def build_month_summary(incomes, expenses, loans, savings_values, info, month, today=None, budgets=(), deposits=()):
     """In / Out / Saved / Left to spend / split (+ forecast when `today` is given) for one month.
     info = {"income", "expenses", "loans", "savings"}: provided / none / missing. Missing → None, never Rs 0.
     savings_values = {"monthly_target": own target or None, "bank_balance": ..., ...} (bank balance is NOT used here).
+    deposits = the savings entries (deposits table): Saved = put in − taken out this month.
     Out = everyday + fixed bills + saved-loan repayments that aren't already a fixed bill (loans only when shared)."""
     info = {topic: info.get(topic, "provided") for topic in ("income", "expenses", "loans", "savings")}
     income = get_monthly_income(incomes, month) if info["income"] in KNOWN else None
@@ -96,15 +109,15 @@ def build_month_summary(incomes, expenses, loans, savings_values, info, month, t
     loan_repayments = get_loans_not_in_bills(loans, fixed_bills, month) if info["loans"] in KNOWN else None
     out = to_money(spent + (loan_repayments or 0)) if spent is not None else None
     monthly_target = get_monthly_target(savings_values.get("monthly_target"), incomes, month)
-    saved = get_saved_this_month(info["savings"], monthly_target)
+    saved = get_saved_this_month(info["savings"], deposits, month)
 
     # Left to spend = In − Out − Saved (needs income AND spending; unknown saving = nothing planned)
     left = to_money(income - out - (saved or 0)) if income is not None and out is not None else None
     left_reason = None
     if left is not None and left < 0:
-        left_reason = "SAVING_AND_SPENDING" if saved else "SPENDING"
+        left_reason = "SAVING_AND_SPENDING" if saved and saved > 0 else "SPENDING"
 
-    split = build_split(income, needs, wants, saved, loan_repayments)
+    split = build_split(income, needs, wants, max(saved or 0, 0), loan_repayments)  # more taken out than put in = 0
     summary = {
         "month": month,
         "info": info,
@@ -121,6 +134,7 @@ def build_month_summary(incomes, expenses, loans, savings_values, info, month, t
         "needs_percent": split["percent"]["needs"] if split else None,
         "wants_percent": split["percent"]["wants"] if split else None,
         "savings_percent": split["percent"]["savings"] if split and saved is not None else None,
+        "savings_status": get_savings_status(info["savings"], saved, monthly_target),
         "split": split,
     }
     if today is not None:

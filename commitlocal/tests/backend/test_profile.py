@@ -215,7 +215,36 @@ def test_migration_0008_keeps_existing_accounts(tmp_path):
     command.upgrade(config, "head")  # rebuilds `users` (SQLite batch): must NOT cascade-delete the user's rows
     with database.engine.begin() as connection:
         user = connection.execute(sa.text("SELECT email, username FROM users")).one()
-        person = connection.execute(sa.text("SELECT full_name, phone, occupation FROM profiles")).one()
-        assert tuple(user) == ("old@example.com", None) and tuple(person) == ("Old User", None, None)
+        person = connection.execute(sa.text("SELECT full_name, occupation FROM profiles")).one()
+        assert tuple(user) == ("old@example.com", None) and tuple(person) == ("Old User", None)
         assert connection.execute(sa.text("SELECT amount_cents FROM expenses")).scalar() == 1500
+    database.engine.dispose()
+
+
+# ===== MIGRATION 0010 REMOVES PHONE-ONLY ACCOUNTS =====
+def test_migration_0010_deletes_phone_only_accounts_and_the_phone_column(tmp_path):
+    import sqlalchemy as sa
+    from alembic import command
+    from alembic.config import Config
+    database.connect(f"sqlite:///{tmp_path.as_posix()}/old.db")
+    config = Config(str(database.BACKEND_DIR / "alembic.ini"))
+    config.set_main_option("script_location", str(database.BACKEND_DIR / "migrations"))
+    config.attributes["engine"] = database.engine
+    command.upgrade(config, "0009")  # the database as it was before this change
+    keep, gone = "a" * 32, "d" * 32
+    with database.engine.begin() as connection:
+        for user, email, phone in [(keep, "'keep@example.com'", "'+23052223333'"), (gone, "NULL", "'+23051234567'")]:
+            connection.execute(sa.text("INSERT INTO users (id, email, password_hash, failed_attempts, is_locked, "
+                                       f"created_at) VALUES (:id, {email}, 'x', 0, 0, '2026-01-01')"), {"id": user})
+            connection.execute(sa.text("INSERT INTO profiles (id, user_id, phone, updated_at) "
+                                       f"VALUES (:id, :user, {phone}, '2026-01-01')"), {"id": user[:31] + "1", "user": user})
+            connection.execute(sa.text("INSERT INTO expenses (id, user_id, amount_cents, category, kind, description, "
+                                       "date, is_fixed, source, created_at) VALUES (:id, :user, 1500, 'Other', 'need', "
+                                       "'', '2026-01-02', 0, 'typed', '2026-01-02')"), {"id": user[:31] + "2", "user": user})
+    command.upgrade(config, "head")
+    with database.engine.begin() as connection:
+        assert connection.execute(sa.text("SELECT email FROM users")).scalars().all() == ["keep@example.com"]
+        for table in ["profiles", "expenses"]:  # only the kept account's rows are left
+            assert connection.execute(sa.text(f"SELECT COUNT(*) FROM {table}")).scalar() == 1
+        assert "phone" not in {c["name"] for c in sa.inspect(connection).get_columns("profiles")}
     database.engine.dispose()

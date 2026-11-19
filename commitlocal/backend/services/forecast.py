@@ -10,8 +10,8 @@ import calendar
 import math
 from datetime import date
 
-from money import (get_everyday_expenses, get_fixed_bills, get_month_number, get_month_of, get_monthly_income,
-                   get_total, to_money)
+from money import (entry_sign, get_everyday_expenses, get_fixed_bills, get_month_number, get_month_of,
+                   get_monthly_income, get_total, to_money)
 
 MIN_DAYS = 5               # before the 5th of the month one big shop would make the guess jump around
 GOAL_HISTORY_MONTHS = 3    # the average saved per month uses up to the last 3 months
@@ -87,7 +87,7 @@ def get_goal_eta(goal, deposits, today):
         return None
     # Months counted = from the first recent deposit's month to this month (a goal started last month isn't ÷ 3)
     started = min(get_month_number(get_month_of(d["date"])) for d in recent)
-    per_month = get_total(recent) / (this_number - started + 1)
+    per_month = sum(entry_sign(d) * d["amount"] for d in recent) / (this_number - started + 1)  # put in − taken out
     if per_month <= 0:
         return None
     months = math.ceil(round(remaining / per_month, 6))  # round first: 3.0000001 must stay 3

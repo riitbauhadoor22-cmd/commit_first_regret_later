@@ -1,6 +1,7 @@
 // savings-view.js — Money → Savings (this used to be the Targets tab): money saved in the bank (with a bar split into
 // safety net + goals), the monthly saving target, the safety net, and the goals list with On track / Needs more.
-// It also runs the pop-ups: update bank balance, change target, new/edit goal, add money.
+// It also runs the pop-ups: update total savings (starting balance), change target, new/edit goal, and
+// "Add to savings" / "Take out" (real savings entries: they move total savings, the safety net and goals).
 // All the maths (needs per month, status, warning, inflation estimate) comes from the backend
 // (/api/savings, /api/goals and the Statistics Mauritius CPI projection). Goal "ready by" months: /api/forecast.
 // STATUS_KEYS / STATUS_CLASSES / PRIORITY_KEYS live here and are also used by insights.js and dashboard.js.
@@ -16,7 +17,7 @@ let editingGoalSaved = 0;  // money already in the goal being edited (for the in
 let previewTimer = null;   // waits a moment after typing before asking for the inflation preview
 let previewNumber = 0;     // only the newest preview answer is shown
 const BIG_BALANCE = 10000000; // above Rs 1 crore → "Did you mean Rs X?" (catches extra zeros)
-let moneyTarget = null;    // where "Add money" goes: { goalId: 3 } or { goalId: null } for the safety net
+let moneyTarget = null;    // the savings entry pop-up: { id (null = new), kind: "deposit" / "withdrawal" }
 
 // Bar colours (lighter colours, so they show up on the dark card). Goals take turns using them.
 const SAFETY_NET_COLOUR = "#38D6FF"; // cyan, matches the dark blue theme
@@ -59,8 +60,9 @@ const INFLATION_WARNING_KEYS = {
 // ===== LOAD AND DRAW =====
 async function loadSavingsView() {
   try {
-    const [savings, goals, forecast] = await Promise.all([getSavings(), getGoals(),
-      getForecast(getTodayText(), getThisMonthText()).catch(() => null)]); // no forecast = no "ready by" line
+    const [savings, goals, forecast, entries] = await Promise.all([getSavings(), getGoals(),
+      getForecast(getTodayText(), getThisMonthText()).catch(() => null), // no forecast = no "ready by" line
+      getSavingsEntries(getThisMonthText())]);
     goalEtas = forecast ? forecast.goals : {};
     savingsInfo = savings;
     goalsInfo = goals;
@@ -68,6 +70,7 @@ async function loadSavingsView() {
     drawMonthlySaving(savings);
     drawSafetyNet(savings.safety_net);
     drawGoals(goals);
+    drawEntries(entries.entries);
   } catch (error) {
     showToast(error.message, true);
   }
@@ -508,40 +511,73 @@ async function deleteShownGoal() {
   }
 }
 
-// ===== POP-UP: ADD MONEY (goal = null → safety net) =====
-function openMoneySheet(goal) {
-  moneyTarget = { goalId: goal ? goal.id : null };
-  if (goal) setText(byId("money-title"), "targets.addMoneyTo", { name: goal.name });
-  else setText(byId("money-title"), "targets.addMoneySafety");
-  if (goal) setText(byId("money-hint"), "targets.stillNeeded", { amount: formatMoney(goal.target_amount - goal.saved_amount) });
-  else setText(byId("money-hint"), "targets.alsoBank");
-  byId("money-amount").value = "";
+// ===== POP-UP: ADD TO SAVINGS / TAKE OUT (real savings entries) =====
+// One pop-up for both. place = general / safety_net / goal; editing an entry also offers Delete.
+// The backend moves total savings and the safety net / goal picked (and undoes it on edit / delete).
+function openEntrySheet(kind, place, goalId, entry) {
+  moneyTarget = { id: entry ? entry.id : null, kind: entry ? entry.kind : kind };
+  fillPlaceOptions(entry ? placeValue(entry.place, entry.goal_id) : placeValue(place, goalId));
+  byId("money-amount").value = entry ? entry.amount : "";
+  byId("money-date").value = entry ? entry.date : getTodayText();
   byId("money-error").textContent = "";
+  byId("money-delete").hidden = !entry;
+  pickEntryKind(moneyTarget.kind);
   openSheet("sheet-money");
   byId("money-amount").focus();
 }
 
+// Older callers: "+ Add money" on the safety net (goal = null) or on a goal card
+function openMoneySheet(goal) {
+  openEntrySheet("deposit", goal ? "goal" : "safety_net", goal ? goal.id : null, null);
+}
+
+function placeValue(place, goalId) { return place === "goal" ? "goal:" + goalId : place; }
+
+function fillPlaceOptions(chosen) {
+  const select = byId("money-place");
+  select.replaceChildren();
+  const add = (value, text) => {
+    const option = makeElement("option", "", text);
+    option.value = value;
+    select.append(option);
+  };
+  add("general", t("savings.placeGeneral"));
+  add("safety_net", t("savings.placeSafety"));
+  ((goalsInfo && goalsInfo.goals) || []).forEach((goal) => add("goal:" + goal.id, t("savings.placeGoal", { name: goal.name })));
+  select.value = chosen;
+  if (!select.value) select.value = "general";
+}
+
+function pickEntryKind(kind) {
+  moneyTarget.kind = kind;
+  document.querySelectorAll("[data-entry-kind]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.entryKind === kind);
+  });
+  const adding = kind === "deposit";
+  setText(byId("money-title"), moneyTarget.id ? "savings.editTitle" : adding ? "savings.addTitle" : "savings.takeOutTitle");
+  setText(byId("money-place-label"), adding ? "savings.placeIn" : "savings.placeOut");
+  setText(byId("money-hint"), adding ? "savings.hintIn" : "savings.hintOut");
+}
+
+function readEntryForm() {
+  const [place, goalId] = byId("money-place").value.split(":");
+  return { kind: moneyTarget.kind, amount: Number(byId("money-amount").value), date: byId("money-date").value || null,
+    place: place, goal_id: goalId || null };
+}
+
 async function saveMoneyForm(event) {
   event.preventDefault();
-  const amount = Number(byId("money-amount").value);
-  if (!(amount > 0)) {
+  const entry = readEntryForm();
+  if (!(entry.amount > 0)) {
     showFormError("money-error", t("form.amountAbove0"));
     return;
   }
   const saveButton = byId("money-save");
   saveButton.disabled = true;
   try {
-    if (moneyTarget.goalId === null) {
-      await addToSafetyNet(amount);
-      showToast(t("toast.addedSafety", { amount: formatMoney(amount) }));
-    } else {
-      const result = await addMoneyToGoal(moneyTarget.goalId, amount);
-      // The backend never fills a goal past its target, so it may have added less
-      const message = result.added < amount
-        ? t("toast.addedGoalFull", { amount: formatMoney(result.added) })
-        : t("toast.added", { name: formatMoney(result.added) });
-      showToast(message);
-    }
+    if (moneyTarget.id) await editSavingsEntry(moneyTarget.id, entry);
+    else await addSavingsEntry(entry);
+    showToast(t(entry.kind === "deposit" ? "savings.addedToast" : "savings.takenOutToast", { amount: formatMoney(entry.amount) }));
     closeSheet("sheet-money");
     await reloadAfterSaving();
   } catch (error) {
@@ -549,6 +585,40 @@ async function saveMoneyForm(event) {
   } finally {
     saveButton.disabled = false;
   }
+}
+
+async function deleteShownEntry() {
+  try {
+    await deleteSavingsEntry(moneyTarget.id);
+    showToast(t("savings.deletedToast"));
+    closeSheet("sheet-money");
+    await reloadAfterSaving();
+  } catch (error) {
+    showFormError("money-error", error.message);
+  }
+}
+
+// This month's entries: "+Rs 500 · Safety net · 3 Nov" (tap = edit / delete)
+function drawEntries(entries) {
+  const list = byId("entry-list");
+  list.replaceChildren();
+  byId("entry-empty").hidden = entries.length > 0;
+  entries.forEach((entry) => {
+    const li = makeElement("li");
+    const button = makeElement("button", "item");
+    button.type = "button";
+    const goal = ((goalsInfo && goalsInfo.goals) || []).find((g) => g.id === entry.goal_id);
+    const where = entry.place === "goal" ? (goal ? goal.name : t("savings.placeGoalGone"))
+      : t(entry.place === "safety_net" ? "savings.placeSafety" : "savings.placeGeneral");
+    const left = makeElement("span");
+    left.append(makeElement("span", "item-name", t(entry.kind === "deposit" ? "savings.kindIn" : "savings.kindOut")),
+      makeElement("span", "item-sub", where + " · " + formatShortDate(entry.date)));
+    const amount = entry.kind === "deposit" ? formatIn(entry.amount) : formatOut(entry.amount);
+    button.append(left, makeElement("span", "item-amount " + (entry.kind === "deposit" ? "money-in" : "money-out"), amount));
+    button.addEventListener("click", () => openEntrySheet(entry.kind, entry.place, entry.goal_id, entry));
+    li.append(button);
+    list.append(li);
+  });
 }
 
 // ===== OPEN FROM ANOTHER TAB (Dashboard jar, shortcuts) =====
@@ -576,6 +646,12 @@ function startSavingsView() {
   byId("goal-form").addEventListener("submit", saveGoalForm);
   byId("goal-delete").addEventListener("click", deleteShownGoal);
   byId("money-form").addEventListener("submit", saveMoneyForm);
+  byId("money-delete").addEventListener("click", deleteShownEntry);
+  byId("savings-add-btn").addEventListener("click", () => openEntrySheet("deposit", "general", null, null));
+  byId("savings-out-btn").addEventListener("click", () => openEntrySheet("withdrawal", "general", null, null));
+  document.querySelectorAll("[data-entry-kind]").forEach((button) => {
+    button.addEventListener("click", () => pickEntryKind(button.dataset.entryKind));
+  });
   ["goal-target", "goal-deadline", "goal-category"].forEach((id) => {
     byId(id).addEventListener("input", schedulePreview);
     byId(id).addEventListener("change", schedulePreview);

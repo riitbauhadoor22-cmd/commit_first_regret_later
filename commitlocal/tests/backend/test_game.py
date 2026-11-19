@@ -1,6 +1,8 @@
 # test_game.py — Arcade "Budget Challenge": server scoring (spec cases: exact income, unallocated, over income,
 # no savings, needs > 50%, wants > 30%, essentials, cost / discount / bonus events), locked values, events off,
 # XP once per attempt + replay, +20 first-completion bonus once per level, per user, 401, money tables untouched.
+import uuid
+
 import pytest
 from sqlalchemy import func, select
 
@@ -8,7 +10,7 @@ import database
 from conftest import log_in
 from game import scenarios
 from game.scenarios import get_event, get_level
-from game.scoring import score_allocation
+from game.scoring import allocation_points, score_allocation
 from models import Budget, Expense, Income
 
 L1, L3 = get_level(1), get_level(3)
@@ -44,7 +46,12 @@ def test_some_unallocated_is_a_buffer_then_costs_points():
     small = score(L1, dict(perfect_l1(), savings=2000))  # Rs 1,000 left = 6.7% -> sensible buffer
     assert points(small)["balance"] == 30 and "unassigned" in codes(small)
     big = score(L1, dict(perfect_l1(), savings=0, personal=0))  # Rs 5,000 left = 33%
-    assert points(big)["balance"] == 10
+    assert points(big)["balance"] == 20
+
+
+def test_balance_threshold_at_10_percent_unallocated():
+    assert points(score(L1, dict(perfect_l1(), savings=1500)))["balance"] == 30  # exactly 10% left
+    assert points(score(L1, dict(perfect_l1(), savings=1499.99)))["balance"] == 20  # just over 10%
 
 
 def test_exceeds_income_gets_no_balance_points():
@@ -55,7 +62,7 @@ def test_exceeds_income_gets_no_balance_points():
 def test_nothing_to_savings():
     result = score(L1, dict(perfect_l1(), savings=0, entertainment=5500))
     assert points(result)["savings"] == 0 and "no_savings" in codes(result)
-    assert points(result)["allocation"] == 5  # wants 50% (20 off) + savings 0% (20 off) = 40 -> 5 points
+    assert points(result)["allocation"] == 14  # needs 7 + wants 50% (half: 3.5) + savings 0% (half: 3) = 13.5 -> 14
 
 
 def test_savings_not_rewarded_above_goal():
@@ -64,16 +71,41 @@ def test_savings_not_rewarded_above_goal():
     assert points(goal)["savings"] == points(more)["savings"] == 15
 
 
+@pytest.mark.parametrize("saved,expected", [(0, 0), (150, 10), (750, 10), (1499.99, 10), (1500, 15), (3750, 15)])
+def test_savings_thresholds(saved, expected):  # 0% · 1% · 5% · just under 10% · 10% · 25% of Rs 15,000
+    assert points(score(L1, dict(perfect_l1(), savings=saved)))["savings"] == expected
+
+
+@pytest.mark.parametrize("kind,share", [("need", 7), ("want", 7), ("savings", 6)])
+def test_allocation_group_thresholds(kind, share):
+    def pts(gap):
+        percents = {"need": 50, "want": 30, "savings": 20}
+        percents[kind] += gap
+        return allocation_points(percents)
+    for sign in (1, -1):
+        assert pts(sign * 10) == 20  # within ±10 points: full share
+        assert pts(sign * 10.01) == pts(sign * 20) == round(20 - share / 2 + 0.01)  # within ±20: half (16.5 -> 17)
+        assert pts(sign * 20.01) == 20 - share  # beyond ±20: 0
+
+
+def test_allocation_halves_round_half_up():
+    assert allocation_points({"need": 65, "want": 30, "savings": 20}) == 17  # 3.5 + 7 + 6 = 16.5
+    assert allocation_points({"need": 65, "want": 15, "savings": 20}) == 13  # 3.5 + 3.5 + 6
+    assert allocation_points({"need": 100, "want": 0, "savings": 0}) == 3  # only savings (20 off) gets half
+
+
 def test_needs_above_50_percent():
     slightly = score(L1, dict(perfect_l1(), food=4750, personal=1250))  # needs 55%, wants 25%
     assert points(slightly)["allocation"] == 20 and "high_needs_ok" in codes(slightly)
-    much = score(L1, dict(perfect_l1(), food=5500, personal=500))  # needs 60%, wants 20% -> distance 5 + 10
-    assert points(much)["allocation"] == 18 and "needs_high" in codes(much)
+    edge = score(L1, dict(perfect_l1(), food=5500, personal=500))  # needs 60%, wants 20%: both still within ±10
+    assert points(edge)["allocation"] == 20 and "high_needs_ok" in codes(edge)
+    much = score(L1, dict(perfect_l1(), food=6250, personal=0, entertainment=2250))  # needs 65%, wants 15% -> halves
+    assert points(much)["allocation"] == 13 and "needs_high" in codes(much)
 
 
 def test_wants_above_30_percent():
     result = score(L1, dict(perfect_l1(), entertainment=4000, savings=1500))  # wants 40%, savings 10%
-    assert points(result)["allocation"] == 15 and "large_wants" in codes(result)
+    assert points(result)["allocation"] == 20 and "large_wants" in codes(result)  # both exactly 10 points off: full
 
 
 def test_essentials_coverage():
@@ -81,7 +113,12 @@ def test_essentials_coverage():
     one_short = score(L1, dict(perfect_l1(), transport=1499.99, savings=3300.01))
     assert points(one_short)["essentials"] == 19  # 3 of 4 covered
     assert {"code": "essential_short", "params": {"category": "transport", "min": 1500}} in one_short["tips"]
-    assert points(one_short)["savings"] == 5 and "save_vs_essentials" in codes(one_short)  # savings capped
+    assert points(one_short)["savings"] == 15 and "save_vs_essentials" in codes(one_short)  # tip only, no cap
+    two_short = score(L1, dict(perfect_l1(), transport=0, phone=0))
+    assert points(two_short)["essentials"] == 13  # 2 of 4 -> 12.5, rounded half up
+    assert points(score(L1, dict(perfect_l1(), food=0, transport=0, phone=0, study=0)))["essentials"] == 0
+    l3 = {"rent": 12000, "groceries": 5000, "electricity_water": 2000, "transport": 2000, "phone": 0, "healthcare": 700}
+    assert points(score(L3, l3))["essentials"] == 20  # 4 of 5 min_amount essentials (locked rent / loan don't count)
 
 
 def test_high_rent_level_3_can_reach_100():
@@ -123,6 +160,8 @@ def test_config_is_consistent():
         biggest_cost = max([e["amount"] for e in level["events"] if e["type"] == "cost"] + [0])
         assert sum(scenarios.minimum_of(c) for c in level["categories"]) + biggest_cost <= level["income"]  # never forced negative
         assert all(e["category"] in ids for e in level["events"])
+        # all minimums + locked amounts fit in 85% of income
+        assert sum(scenarios.minimum_of(c) for c in level["categories"]) * 100 <= level["income"] * scenarios.MIN_SHARE_MAX
     assert [c["id"] for c in L1["categories"] if "locked" in c] == []
     assert {c["id"]: (c["locked"], c["kind"]) for c in get_level(2)["categories"] if "locked" in c} == {"loan": (2500, "savings")}
     assert {c["id"]: c["locked"] for c in L3["categories"] if "locked" in c} == {"rent": 12000, "loan": 3000}
@@ -171,8 +210,43 @@ def test_event_flow_reveal_then_one_adjustment(logged_in):
     first = submit(logged_in, game["attempt_id"], perfect_l1(), final=False).json()
     assert first["stage"] == "event" and first["event"]["id"] and first["xp_awarded"] == 0
     assert submit(logged_in, game["attempt_id"], perfect_l1(), final=False).json()["code"] == "GAME_FINAL_NEEDED"
-    final = submit(logged_in, game["attempt_id"], perfect_l1(), final=True).json()
+    slack = dict(perfect_l1(), savings=2000)  # Rs 1,000 left covers any cost event (max +500)
+    final = submit(logged_in, game["attempt_id"], slack, final=True).json()
     assert final["stage"] == "done" and final["xp_awarded"] == final["score"] + 20
+
+
+def start_with_event(client, monkeypatch, event_id, level=1):
+    monkeypatch.setattr("routes.game.choose_event", lambda lvl, on: get_event(lvl, event_id))
+    return start(client, level=level, events_on=True)
+
+
+def test_shortfall_when_event_pushes_over_income(logged_in, monkeypatch):
+    game = start_with_event(logged_in, monkeypatch, "bus_fare")  # transport needs +500
+    first = submit(logged_in, game["attempt_id"], perfect_l1(), final=False).json()  # transport 1,800 < 2,000
+    assert first["stage"] == "event" and first["shortfall"] == 200
+    # Over income: blocked as often as needed, nothing used up
+    for _ in range(3):
+        blocked = submit(logged_in, game["attempt_id"], dict(perfect_l1(), transport=2000), final=True)
+        assert blocked.status_code == 400 and blocked.json()["code"] == "GAME_OVER_INCOME"
+        short = submit(logged_in, game["attempt_id"], perfect_l1(), final=True)  # unchanged: event not covered
+        assert short.status_code == 400 and short.json()["code"] == "GAME_EVENT_SHORTFALL"
+        assert short.json()["params"] == {"short": 200}
+    assert submit(logged_in, game["attempt_id"], perfect_l1(), final=False).json()["code"] == "GAME_FINAL_NEEDED"
+    final = submit(logged_in, game["attempt_id"], dict(perfect_l1(), transport=2000, personal=1800), final=True).json()
+    assert final["stage"] == "done" and final["score"] == 100 and final["xp_awarded"] == 120
+
+
+def test_no_shortfall_when_event_fits(logged_in, monkeypatch):
+    game = start_with_event(logged_in, monkeypatch, "bus_fare")
+    fine = dict(perfect_l1(), savings=2500)  # Rs 500 left covers the +500
+    assert submit(logged_in, game["attempt_id"], fine, final=False).json()["shortfall"] == 0
+    game = start_with_event(logged_in, monkeypatch, "small_bonus")
+    assert submit(logged_in, game["attempt_id"], perfect_l1(), final=False).json()["shortfall"] == 0
+
+
+def test_unknown_attempt_id_is_404(logged_in):
+    res = submit(logged_in, uuid.uuid4(), perfect_l1())
+    assert res.status_code == 404 and res.json()["code"] == "GAME_NOT_FOUND"
 
 
 def test_events_can_be_turned_off_on_every_level(logged_in):

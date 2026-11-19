@@ -1,6 +1,8 @@
 # routes/expenses.py — /api/expenses: list, add, edit and delete expenses, plus the "Quick add" chips.
-# A fixed bill (is_fixed = 1) is saved once and counted in every month from its date onwards.
+# A fixed bill (is_fixed = 1) is saved once and counted in every month from its date onwards (weekly bills × 52 ÷ 12).
 # GET /suggest-category?text= guesses a category from the note (own history, then keywords; category_keywords.py).
+# POST /scan-bill {image} reads a bill photo with a Groq vision model (services/bill_scan.py) → {amount, date, shop,
+# category} to fill in the form. Nothing is saved and the photo is never stored or logged.
 import datetime
 import uuid
 from typing import Optional
@@ -11,11 +13,13 @@ from categories import CATEGORIES, get_default_kind
 from category_keywords import CATEGORY_KEYWORDS, suggest_category
 from errors import AppError
 from database import find_user_row, get_user_rows, open_db
-from models import Expense, ExpenseForm, QuickAddForm
+from models import AiRequestLog, BillScanForm, Expense, ExpenseForm, QuickAddForm
 from money import (get_everyday_expenses, get_fixed_bills, get_quick_add, get_this_month,
                    get_today, to_cents)
 from routes.auth import require_user
+from routes.insights import get_usage, set_log_outcome, wait_error
 from routes.summary import MONTH_PATTERN
+from services import ai_insights, bill_scan
 
 router = APIRouter(prefix="/api/expenses")
 
@@ -30,10 +34,13 @@ def find_expense(db, expense_id, user_id):
 
 
 def form_to_values(form):
-    """The column values to save, filling in the defaults: kind from the category, date = today."""
+    """The column values to save, filling in the defaults: kind from the category, date = today.
+    frequency weekly / monthly = a fixed bill (weekly ones count × 52 ÷ 12 a month); empty = use is_fixed."""
+    frequency = form.frequency or ("monthly" if form.is_fixed else "one-off")
     return {"amount_cents": to_cents(form.amount), "category": form.category,
             "kind": form.kind or get_default_kind(form.category), "description": form.note.strip(),
-            "date": form.date or datetime.date.today(), "is_fixed": form.is_fixed}
+            "date": form.date or datetime.date.today(), "is_fixed": frequency != "one-off",
+            "weekly": frequency == "weekly"}
 
 
 def save_expense(db, values, user_id, source):
@@ -85,7 +92,7 @@ def add_quick_expense(form: QuickAddForm, user_id: uuid.UUID = Depends(require_u
         if chip is None:
             raise AppError(404, "QUICK_ADD_GONE", "That quick-add button isn't there any more. Please refresh.")
         values = {"amount_cents": to_cents(chip["amount"]), "category": chip["category"], "kind": chip["kind"],
-                  "description": chip["note"], "date": datetime.date.today(), "is_fixed": False}
+                  "description": chip["note"], "date": datetime.date.today(), "is_fixed": False, "weekly": False}
         return save_expense(db, values, user_id, "quick")
 
 
@@ -95,6 +102,50 @@ def read_category_suggestion(text: str = Query(default="", max_length=100), user
     with open_db() as db:
         expenses = get_user_rows(db, Expense, user_id)
     return suggest_category(text, expenses)
+
+
+@router.post("/scan-bill")
+def scan_bill(form: BillScanForm, user_id: uuid.UUID = Depends(require_user)):
+    """Reads a bill photo → {amount, date, shop, category} for the Add expense form (the user still taps Save).
+    Same guards as Financial insights: no key → 503, own daily limit + cooldown, one scan at a time, Groq's 429 pause.
+    Any reading problem → 502 BILL_UNREADABLE ("Couldn't read this bill – type it in instead")."""
+    settings = bill_scan.get_scan_settings()
+    if not settings.api_key:
+        raise AppError(503, "BILL_SCAN_UNAVAILABLE", "Scanning bills isn't set up here. Type it in instead.")
+    try:
+        media_type, image = bill_scan.check_image(form.image)
+    except bill_scan.ImageProblem as problem:
+        raise AppError(400, problem.code, "Please use a photo (JPG, PNG or WebP) of at most 5 MB.")
+    paused = ai_insights.get_pause_seconds()
+    if paused:
+        raise wait_error("BILL_SCAN_BUSY", "Scanning is busy right now. Type it in instead.", paused)
+    may_run, _ = ai_insights.start_request(("scan", user_id))
+    if not may_run:
+        raise AppError(409, "BILL_SCAN_IN_PROGRESS", "A bill is already being read. Please wait.")
+    try:
+        with open_db() as db:
+            usage = get_usage(db, user_id, settings, scans=True)
+            if usage["used_today"] >= settings.daily_limit:
+                raise AppError(429, "BILL_SCAN_LIMIT", "You've used today's bill scans. Type it in instead.",
+                               {"limit": settings.daily_limit})
+            if usage["cooldown_seconds_left"]:
+                raise wait_error("BILL_SCAN_WAIT", "Please wait a moment before scanning again.",
+                                 usage["cooldown_seconds_left"])
+            log_row = AiRequestLog(user_id=user_id, month=bill_scan.SCAN_LOG_MONTH, model=settings.model,
+                                   outcome="started")
+            db.add(log_row)  # counted BEFORE the call
+        try:
+            bill = bill_scan.parse_bill(bill_scan.send_scan(bill_scan.build_scan_body(media_type, image, settings),
+                                                             settings))
+        except ai_insights.AiUnavailable as problem:
+            set_log_outcome(log_row.id, problem.code)
+            if problem.code == "AI_RATE_LIMITED":
+                ai_insights.pause_groq(problem.retry_after)
+            raise AppError(502, "BILL_UNREADABLE", "Couldn't read this bill – type it in instead.")
+        set_log_outcome(log_row.id, "ok")
+        return bill
+    finally:
+        ai_insights.finish_request(("scan", user_id))
 
 
 @router.get("/category-keywords")

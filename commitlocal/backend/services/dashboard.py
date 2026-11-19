@@ -46,7 +46,7 @@ def get_month_flows(records, choices, month, today=None, budgets=()):
     """In / Out / Saved / Left (+ forecast) from the ONE shared function (services/month_summary.py), so the
     Dashboard shows exactly the same numbers as the Money tab."""
     return build_month_summary(records["incomes"], records["expenses"], records["loans"], records["savings_row"] or {},
-                               get_month_status(records, choices, month), month, today, budgets)
+                               get_month_status(records, choices, month), month, today, budgets, records["deposits"])
 
 
 def change_percent(before, now):
@@ -411,7 +411,9 @@ def get_finished_weeks(expenses, weekly_budget, today):
 
 
 def get_saving_weeks(deposits, today, count=4):
-    """True for each finished week (newest last) that had a deposit: the 'Savings Streak' needs 4 in a row."""
+    """True for each finished week (newest last) that had money put into savings: the 'Savings Streak' needs 4 in
+    a row. Taking money out doesn't count as saving."""
+    deposits = [d for d in deposits if d.get("kind", "deposit") == "deposit"]
     weeks = []
     week = get_week_start(today) - timedelta(days=7)
     first = min((date.fromisoformat(d["date"]) for d in deposits), default=None)

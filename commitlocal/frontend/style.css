@@ -982,3 +982,19 @@ body.app { padding-bottom: calc(100px + env(safe-area-inset-bottom)); } /* room 
 /* Budget Challenge fields a little tighter (long level 3 list) */
 #game-fields { gap: 8px; }
 .game-field input { min-height: 44px; }
+
+/* ===== MY BUDGET PLAN (budget-plan.js) ===== */
+.plan-card .plan-name { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.plan-card .aim, .plan-card .plan-streak { margin: 0; }
+.plan-streak { font-weight: 600; }
+.split-row.warn { color: var(--danger); }
+.plan-option { border: 0; background: none; color: inherit; text-align: left; border-bottom: 1px solid var(--line); }
+.plan-option:disabled { opacity: 0.6; cursor: default; }
+.plan-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; padding: 8px 12px; }
+.plan-tag-looser { border-color: var(--danger); color: var(--danger); }
+.plan-tag-stricter { border-color: var(--blue); }
+.savings-status { display: grid; gap: 6px; justify-items: start; margin-top: 8px; }
+.savings-message { margin: 0; }
+.scan-bill { display: grid; gap: 4px; justify-items: start; }
+.scan-bill .small { margin: 0; }
+#scan-bill-status.error { color: var(--danger); }

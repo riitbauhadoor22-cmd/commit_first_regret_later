@@ -127,7 +127,7 @@ def analyse_month(incomes, expenses, deposits, goals, savings, loans, info, mont
     and remaining come from the SAME shared function as the Money tab (services/month_summary.py); loans = saved
     loan repayments not already recorded as a fixed bill, so nothing is counted twice. The bank balance is money
     already saved: it is never part of this month's numbers."""
-    flows = build_month_summary(incomes, expenses, loans, savings, info, month)
+    flows = build_month_summary(incomes, expenses, loans, savings, info, month, deposits=deposits)
     income = flows["income"]
     expenses_known = is_known(info["expenses"])
     needs, wants = flows["needs"], flows["wants"]

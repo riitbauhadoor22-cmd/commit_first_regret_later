@@ -86,9 +86,9 @@ def test_income_counts_in_summary(logged_in):
 def test_savings_and_safety_net(logged_in):
     assert logged_in.put("/api/savings", json={"bank_balance": 1000, "monthly_target": 500}).status_code == 200
     data = logged_in.post("/api/savings/safety-net/add-money", json={"amount": 250.25}).json()
-    assert data["bank_balance"] == 1000  # the safety net is set aside INSIDE the balance (was: 1250.25)
+    assert data["bank_balance"] == 1250.25  # real savings: adding money raises total savings
     assert data["safety_net"]["saved"] == 250.25
-    assert data["saved_this_month"] == 500  # = the monthly saving target, not the deposit (was: 250.25)
+    assert data["saved_this_month"] == 250.25  # what was really put in this month, not the 500 target
 
 
 def test_goal_add_money_never_goes_past_target(logged_in):

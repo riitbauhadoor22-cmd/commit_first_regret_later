@@ -1,6 +1,7 @@
 # test_savings_model.py — the three savings values (bank_savings_balance, monthly_saving_target, saved_this_month)
 # and the ONE shared month maths (services/month_summary.py). Test data = the user's screen:
-# income Rs 2,000 · spending Rs 32 (Rs 12 + Rs 20) · monthly saving target Rs 100 · bank balance Rs 2,000,000.
+# income Rs 2,000 · spending Rs 32 (Rs 12 + Rs 20) · monthly saving target Rs 100 · bank balance Rs 2,000,000 ·
+# Rs 100 really put into savings this month (saved_this_month = deposits − withdrawals, not the target).
 import json
 from datetime import date
 
@@ -15,11 +16,12 @@ EXPENSES = [
     {"amount": 20, "category": "Transport", "kind": "need", "is_fixed": False, "date": "2026-11-14", "note": ""},
 ]
 ALL_GIVEN = {"income": "provided", "expenses": "provided", "loans": "none", "savings": "provided"}
+DEPOSITS = [{"amount": 100, "date": "2026-11-05", "kind": "deposit"}]
 
 
-def month(savings=None, incomes=INCOMES, expenses=EXPENSES, loans=(), info=ALL_GIVEN):
+def month(savings=None, incomes=INCOMES, expenses=EXPENSES, loans=(), info=ALL_GIVEN, deposits=DEPOSITS):
     savings = savings or {"monthly_target": 100, "bank_balance": 2_000_000, "safety_net_saved": 2000}
-    return build_month_summary(incomes, expenses, list(loans), savings, info, MONTH, TODAY)
+    return build_month_summary(incomes, expenses, list(loans), savings, info, MONTH, TODAY, deposits=deposits)
 
 
 # ===== SUMMARY CARD + SPLIT + FORECAST (test data) =====
@@ -72,7 +74,7 @@ def test_negative_left_to_spend_has_a_reason():
     small = [{"amount": 100, "frequency": "monthly", "date": "2026-11-01"}]
     s = month(incomes=small)
     assert s["left_to_spend"] == -32 and s["left_reason"] == "SAVING_AND_SPENDING"
-    s = month(incomes=small, expenses=EXPENSES * 4, info={**ALL_GIVEN, "savings": "none"})  # not saving
+    s = month(incomes=small, expenses=EXPENSES * 4, info={**ALL_GIVEN, "savings": "none"}, deposits=[])  # not saving
     assert s["saved"] == 0 and s["left_to_spend"] == -28 and s["left_reason"] == "SPENDING"
 
 
@@ -100,12 +102,12 @@ def test_api_test_user(logged_in):
         assert logged_in.post("/api/expenses", json={"amount": amount, "category": "Groceries",
                                                      "date": this_month + "-01"}).status_code == 201
     assert logged_in.put("/api/savings", json={"bank_balance": 2_000_000, "monthly_target": 100}).status_code == 200
+    assert logged_in.get("/api/summary").json()["saved"] == 0  # the starting balance is NOT saved this month
+    savings = logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 100, "place": "general"}).json()
+    assert savings["bank_balance"] == 2_000_100 and savings["saved_this_month"] == 100
+    assert savings["saving_progress"]["percent"] == 100
     before = logged_in.get("/api/summary").json()
-    # Adding to the safety net and changing the bank balance must not change In / Out / Saved / Left
-    savings = logged_in.post("/api/savings/safety-net/add-money", json={"amount": 2000}).json()
-    assert savings["bank_balance"] == 2_000_000  # set aside inside the balance, not new money
-    assert savings["saved_this_month"] == 100 and savings["saving_progress"]["percent"] == 100
-    assert {p["label"]: p["amount"] for p in savings["bank_bar"]}["Free"] == 1_998_000
+    # Changing the starting balance must not change In / Out / Saved / Left
     assert logged_in.put("/api/savings", json={"bank_balance": 20_000_000, "monthly_target": 100}).status_code == 200
     after = logged_in.get("/api/summary").json()
     for s in (before, after):

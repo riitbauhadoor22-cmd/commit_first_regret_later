@@ -154,13 +154,12 @@ def test_savings_but_nothing_else(logged_in):
     add_goal_with_money(logged_in)
     assert status(logged_in) == {"income": "missing", "expenses": "missing", "loans": "missing", "savings": "provided"}
     savings = logged_in.get("/api/savings").json()
-    assert savings["bank_balance"] is None  # adding to a goal doesn't invent a bank balance
-    # No income and no own target → no monthly saving target, so Saved is unknown ("—"): the goal deposit is
-    # money set aside from the bank, not this month's saving (was: 1000)
-    assert savings["saved_this_month"] is None and savings["monthly_target"] is None
+    assert savings["bank_balance"] == 1000  # money added to a goal is real savings: total savings go up too
+    # No income and no own target → no monthly saving target, but Saved = the Rs 1,000 really put in this month
+    assert savings["saved_this_month"] == 1000 and savings["monthly_target"] is None
     s = summary(logged_in)
-    assert s["saved"] is None and s["income"] is None and s["savings_percent"] is None
-    assert analysis(logged_in)["savings"] is None
+    assert s["saved"] == 1000 and s["income"] is None and s["savings_percent"] is None
+    assert analysis(logged_in)["savings"] == 1000
 
 
 # ===== 7. ADDING MISSING INFORMATION LATER =====

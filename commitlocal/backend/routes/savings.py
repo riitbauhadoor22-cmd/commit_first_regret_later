@@ -1,14 +1,25 @@
-# routes/savings.py — /api/savings: money in the bank, the monthly saving target,
-# this month's saving progress, the safety net, and adding money to the safety net.
+# routes/savings.py — /api/savings: total savings (bank balance), the monthly saving target, this month's REAL
+# saving, the safety net, and the savings entries:
+#   GET    /api/savings/entries?month=   → this month's "Add to savings" / "Take out" entries (newest first)
+#   POST   /api/savings/entries          → {kind deposit/withdrawal, amount, date, place general/safety_net/goal,
+#                                            goal_id} — moves the totals (savings_entries.py)
+#   PUT    /api/savings/entries/{id}     → edit (the old entry's effect is undone first)
+#   DELETE /api/savings/entries/{id}     → delete (its effect is undone)
+# "Update total savings" (PUT /api/savings) only sets the starting balance: it is never "saved this month".
 import datetime
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
-from database import get_savings_row, get_user_rows, open_db, read_savings_values
-from models import AddMoneyForm, Deposit, Expense, Income, MyLoan, SavingsForm, SavingsGoal
-from money import get_bank_bar, get_monthly_target, get_regular_income, get_safety_net, get_this_month, to_cents
+from database import find_user_row, get_savings_row, get_user_rows, open_db, read_savings_values
+from errors import AppError
+from models import AddMoneyForm, Deposit, Expense, Income, MyLoan, SavingsEntryForm, SavingsForm, SavingsGoal
+from money import (get_bank_bar, get_month_of, get_monthly_target, get_regular_income, get_safety_net, get_this_month,
+                   to_cents)
 from routes.auth import require_user
+from routes.summary import MONTH_PATTERN
+from savings_entries import apply_entry
 from routes.info import read_info_status
 from services.month_summary import build_month_summary, get_saving_progress
 
@@ -24,7 +35,8 @@ def build_savings_info(db, user_id):
     expenses = get_user_rows(db, Expense, user_id)
     goals = get_user_rows(db, SavingsGoal, user_id)
     info = read_info_status(db, user_id, month)
-    flows = build_month_summary(incomes, expenses, get_user_rows(db, MyLoan, user_id), savings, info, month)
+    flows = build_month_summary(incomes, expenses, get_user_rows(db, MyLoan, user_id), savings, info, month,
+                                deposits=get_user_rows(db, Deposit, user_id))
     return {
         "info": info["savings"],  # provided / none / missing
         "bank_balance": savings["bank_balance"],  # bank_savings_balance; None = not added yet
@@ -59,12 +71,71 @@ def update_savings(form: SavingsForm, user_id: uuid.UUID = Depends(require_user)
 
 @router.post("/safety-net/add-money")
 def add_to_safety_net(form: AddMoneyForm, user_id: uuid.UUID = Depends(require_user)):
-    """Save a deposit (with no goal) and add it to the safety net. The safety net is part of the bank balance
-    (money set aside from it), so the bank balance itself does NOT change."""
-    cents = to_cents(form.amount)
+    """Older shortcut: a deposit into the safety net today (same as POST /entries)."""
     with open_db() as db:
-        savings = get_savings_row(db, user_id)
-        db.add(Deposit(user_id=user_id, goal_id=None, amount_cents=cents, date=datetime.date.today()))
-        savings.safety_net_saved_cents += cents  # set aside inside the bank balance, not new money
+        save_entry(db, user_id, "deposit", form.amount, datetime.date.today(), "safety_net", None)
+        return build_savings_info(db, user_id)
+
+
+# ===== SAVINGS ENTRIES =====
+def save_entry(db, user_id, kind, amount, day, place, goal_id):
+    cents = to_cents(amount)
+    goal_id = goal_id if place == "goal" else None
+    if place == "goal" and goal_id is None:
+        raise AppError(400, "GOAL_REQUIRED", "Pick the goal this money is for.")
+    apply_entry(db, user_id, kind, place, goal_id, cents)
+    entry = Deposit(user_id=user_id, kind=kind, place=place, goal_id=goal_id, amount_cents=cents, date=day)
+    db.add(entry)
+    db.flush()
+    return entry
+
+
+def find_entry(db, entry_id, user_id):
+    row = find_user_row(db, Deposit, entry_id, user_id)
+    if row is None:
+        raise AppError(404, "ENTRY_NOT_FOUND", "Savings entry not found.")
+    return row
+
+
+def undo_entry(db, user_id, entry):
+    apply_entry(db, user_id, entry.kind, entry.place, entry.goal_id, entry.amount_cents, sign=-1)
+
+
+@router.get("/entries")
+def list_entries(month: Optional[str] = Query(default=None, pattern=MONTH_PATTERN),
+                 user_id: uuid.UUID = Depends(require_user)):
+    month = month or get_this_month()
+    with open_db() as db:
+        rows = [d for d in get_user_rows(db, Deposit, user_id) if get_month_of(d["date"]) == month]
+    return {"month": month, "entries": sorted(rows, key=lambda d: (d["date"], d["created_at"]), reverse=True)}
+
+
+@router.post("/entries", status_code=201)
+def add_entry(form: SavingsEntryForm, user_id: uuid.UUID = Depends(require_user)):
+    with open_db() as db:
+        entry = save_entry(db, user_id, form.kind, form.amount, form.date or datetime.date.today(), form.place,
+                           form.goal_id)
+        return {**build_savings_info(db, user_id), "entry": entry.to_dict()}
+
+
+@router.put("/entries/{entry_id}")
+def edit_entry(entry_id: uuid.UUID, form: SavingsEntryForm, user_id: uuid.UUID = Depends(require_user)):
+    """Undo the old entry's effect, then apply the new values (all or nothing)."""
+    with open_db() as db:
+        old = find_entry(db, entry_id, user_id)
+        day = form.date or old.date
+        undo_entry(db, user_id, old)
+        db.delete(old)
+        db.flush()
+        entry = save_entry(db, user_id, form.kind, form.amount, day, form.place, form.goal_id)
+        return {**build_savings_info(db, user_id), "entry": entry.to_dict()}
+
+
+@router.delete("/entries/{entry_id}")
+def delete_entry(entry_id: uuid.UUID, user_id: uuid.UUID = Depends(require_user)):
+    with open_db() as db:
+        entry = find_entry(db, entry_id, user_id)
+        undo_entry(db, user_id, entry)
+        db.delete(entry)
         db.flush()
         return build_savings_info(db, user_id)

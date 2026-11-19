@@ -12,6 +12,7 @@ const read = (file) => fs.readFileSync(path.join(FRONTEND, file), "utf8");
 const BROWSER = new Set(("if for while switch catch function return typeof await async new Promise Error Number String " +
   "Boolean Array Object Math JSON Date Intl Set Map parseFloat parseInt isNaN isFinite setTimeout clearTimeout " +
   "setInterval clearInterval fetch alert confirm requestAnimationFrame encodeURIComponent decodeURIComponent Chart " +
+  "Image FileReader " +
   "structuredClone super require CustomEvent URL URLSearchParams FormData").split(" "));
 
 function scriptsOf(page) {

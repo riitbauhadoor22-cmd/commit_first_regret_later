@@ -48,7 +48,7 @@ _dummy_hash = None
 
 
 def waste_password_check(password):
-    """Same slow bcrypt work as a real check, for logins with an unknown email/phone,
+    """Same slow bcrypt work as a real check, for logins with an unknown email,
     so the reply time doesn't tell an attacker which accounts exist."""
     global _dummy_hash
     if _dummy_hash is None:

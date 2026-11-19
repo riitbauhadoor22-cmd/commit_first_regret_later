@@ -105,11 +105,11 @@ def test_savings_contributions_and_goals(logged_in):
     add_expense(logged_in, 5000)
     add_goal(logged_in, "Laptop", 20000, saved=8000)
     data = dashboard(logged_in)
-    # 20,000 − 5,000 − 4,000 saved this month (the 20% target); the 8,000 in the goal is bank money (was: 7,000)
-    assert data["balance"]["balance"] == 11000
-    assert data["balance"]["put_aside"] == 8000 and data["balance"]["bank_balance"] is None
+    # 20,000 − 5,000 − 8,000 really put into the goal this month (real savings, also added to total savings)
+    assert data["balance"]["balance"] == 7000
+    assert data["balance"]["put_aside"] == 8000 and data["balance"]["bank_balance"] == 8000
     point = data["savings"]["months"][-1]
-    assert point == {"month": MONTH, "saved": 4000, "income": 20000, "rate": 20.0} and data["savings"]["guide"] == 20
+    assert point == {"month": MONTH, "saved": 8000, "income": 20000, "rate": 40.0} and data["savings"]["guide"] == 20
     jar = data["jar"]["goals"][0]
     assert (jar["name"], jar["saved"], jar["target"], jar["remaining"], jar["percent"]) == ("Laptop", 8000, 20000,
                                                                                           12000, 40.0)

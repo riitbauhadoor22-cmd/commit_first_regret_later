@@ -46,6 +46,7 @@ async function loadMoneyTab() {
   }
   loadForecast();
   loadInsights(shownMonth); // insights.js: reads the saved analysis, never calls the AI
+  if (typeof loadPlanCard === "function") loadPlanCard(); // budget-plan.js (loaded after this file)
 }
 
 // ===== SPENDING FORECAST (this month only; nothing shown when there's too little data) =====
@@ -117,11 +118,30 @@ function drawSummaryCard(summary) {
   // Out = everyday + fixed bills + loan repayments, shown without a minus (the orange colour says it's money out)
   byId("sum-in").textContent = summary.income === null ? "—" : formatIn(Math.round(summary.income));
   byId("sum-out").textContent = summary.out === null ? "—" : formatMoney(Math.round(summary.out));
-  byId("sum-saved").textContent = summary.saved === null ? "—" : formatMoney(Math.round(summary.saved));
+  // Saved = really put into savings − taken out this month (below 0 when more was taken out)
+  byId("sum-saved").textContent = summary.saved === null ? "—"
+    : summary.saved < 0 ? formatOut(Math.round(summary.saved)) : formatMoney(Math.round(summary.saved));
 
   drawSplitBar(summary);
+  byId("savings-status").replaceChildren(...makeSavingsStatus(summary.savings_status));
   drawMoneyPrompts(summary.info);
   byId("spend-empty").hidden = summary.info.expenses !== "missing";
+}
+
+// The encouraging savings message (backend services/month_summary.get_savings_status): where the user stands, what
+// happens if it continues, one small next step. Never blaming. Also used by the plan card (budget-plan.js).
+// Not tracked yet → + an "Add to savings" button (opens the savings pop-up in savings-view.js).
+function makeSavingsStatus(status) {
+  if (!status) return [];
+  const params = { saved: formatMoney(status.saved || 0), target: formatMoney(status.target || 0) };
+  const items = [makeElement("p", "savings-message", t("savings.status." + status.code, params))];
+  if (status.code === "NOT_TRACKED") {
+    const button = makeTextElement("button", "btn btn-small btn-light", "savings.addButton");
+    button.type = "button";
+    button.addEventListener("click", () => openEntrySheet("deposit", "general", null, null));
+    items.push(button);
+  }
+  return items;
 }
 
 // "Add your income…" / "Start recording your expenses…" (+ "No income this month" / "Nothing spent this month")
@@ -166,7 +186,9 @@ function drawSplitBar(summary) {
   if (percent.unplanned > 0) {
     items.push(makeLegendItem("split-unplanned", t("money.unplannedPercent", { n: Math.round(percent.unplanned) })));
   }
-  items.push(makeElement("span", "aim", t("money.aim")));
+  // the active budget plan's targets ("aim 60 · 20 · 20"); no plan yet → the 50 · 30 · 20 guide
+  const aim = summary.plan_aim;
+  items.push(makeElement("span", "aim", aim ? t("money.aimPlan", aim) : t("money.aim")));
   byId("split-legend").replaceChildren(...items);
 }
 
@@ -317,7 +339,8 @@ function makeExpenseItem(expense, onTap) {
 
   const left = makeElement("span");
   left.append(makeElement("span", "item-name", expense.note || tCategory(expense.category)));
-  const when = expense.is_fixed ? t("money.everyMonth") : formatShortDate(expense.date);
+  const when = expense.frequency === "weekly" ? t("money.everyWeek", { amount: formatMoney(expense.entered_amount) })
+    : expense.is_fixed ? t("money.everyMonth") : formatShortDate(expense.date);
   left.append(makeElement("span", "item-sub", tCategory(expense.category) + " · " + when));
 
   button.append(left, makeElement("span", "item-amount money-out", formatOut(expense.amount)));
@@ -393,10 +416,14 @@ function openExpenseSheet(expense, startFixed) {
   byId("expense-note").value = expense ? expense.note : "";
   byId("expense-date").value = expense ? expense.date : getTodayText();
   byId("expense-fixed").checked = expense ? Boolean(expense.is_fixed) : Boolean(startFixed);
+  byId("expense-weekly").checked = Boolean(expense && expense.frequency === "weekly");
+  showWeeklyOption("expense");
+  if (expense && expense.frequency === "weekly") byId("expense-amount").value = expense.entered_amount; // per week
 
   chosenCategory = null;
   chosenKind = null;
   showSuggestedHint(null);
+  showScanStatus("");
   document.querySelectorAll("#category-grid .choice, [data-kind]").forEach((b) => b.classList.remove("active"));
   if (expense) {
     pickCategory(expense.category, false);
@@ -458,6 +485,80 @@ async function suggestFromNote() {
   showSuggestedHint(category);
 }
 
+// "Every week" only makes sense for a repeating bill: shown when "Repeats" is ticked. prefix = "expense" / "cat-expense"
+function showWeeklyOption(prefix) {
+  byId(prefix + "-weekly-row").hidden = !byId(prefix + "-fixed").checked;
+}
+
+function readFrequency(prefix) {
+  if (!byId(prefix + "-fixed").checked) return "one-off";
+  return byId(prefix + "-weekly").checked ? "weekly" : "monthly";
+}
+
+// ===== 📷 SCAN BILL (fills the form; the user checks it and taps Save) =====
+const SCAN_MAX_SIDE = 1600; // the photo is shrunk on the phone first: faster to send, well under the 5 MB limit
+
+function openBillPicker() {
+  byId("scan-bill-input").value = "";
+  byId("scan-bill-input").click();
+}
+
+// The picked photo → a JPEG data URL, at most 1600 px on its longest side (falls back to the file as it is)
+function readPhoto(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const picture = new Image();
+    picture.onload = () => {
+      const scale = Math.min(1, SCAN_MAX_SIDE / Math.max(picture.width, picture.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(picture.width * scale);
+      canvas.height = Math.round(picture.height * scale);
+      canvas.getContext("2d").drawImage(picture, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    picture.onerror = () => {
+      URL.revokeObjectURL(url);
+      const reader = new FileReader(); // the browser can't show it: send it as it is (the server checks the type)
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(new Error(t("error.BILL_IMAGE_TYPE")));
+      reader.readAsDataURL(file);
+    };
+    picture.src = url;
+  });
+}
+
+function showScanStatus(text, isError) {
+  const status = byId("scan-bill-status");
+  status.hidden = !text;
+  status.textContent = text || "";
+  status.classList.toggle("error", Boolean(isError));
+}
+
+async function scanPickedBill() {
+  const file = byId("scan-bill-input").files[0];
+  if (!file) return;
+  if (!file.type.startsWith("image/")) return showScanStatus(t("error.BILL_IMAGE_TYPE"), true);
+  const button = byId("scan-bill-btn");
+  button.disabled = true;
+  showScanStatus(t("expense.scanReading"));
+  try {
+    const bill = await scanBill(await readPhoto(file));
+    byId("expense-amount").value = bill.amount;
+    if (bill.date) byId("expense-date").value = bill.date;
+    if (bill.shop && !byId("expense-note").value.trim()) byId("expense-note").value = bill.shop;
+    if (bill.category && !(chosenCategory && !categorySuggested)) { // only a suggestion: never over the user's pick
+      pickCategory(bill.category, true);
+      showSuggestedHint(bill.category);
+    }
+    showScanStatus(t("expense.scanDone"));
+  } catch (error) {
+    showScanStatus(error.message, true); // "Couldn't read this bill – type it in instead"; the form stays open
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function readExpenseForm() {
   return {
     amount: Number(byId("expense-amount").value),
@@ -466,6 +567,7 @@ function readExpenseForm() {
     note: byId("expense-note").value.trim(),
     date: byId("expense-date").value || null,
     is_fixed: byId("expense-fixed").checked,
+    frequency: readFrequency("expense"),
     source: "typed",
   };
 }
@@ -818,6 +920,8 @@ function resetCategoryExpenseForm() {
   byId("cat-expense-note").value = "";
   byId("cat-expense-date").value = getTodayText();
   byId("cat-expense-fixed").checked = false;
+  byId("cat-expense-weekly").checked = false;
+  showWeeklyOption("cat-expense");
   byId("cat-expense-error").textContent = "";
   setText(byId("cat-expense-save"), "expense.saveExpense");
   byId("cat-expense-cancel").hidden = true;
@@ -829,10 +933,12 @@ function startEditInCategory(expense) {
   detailEditingId = expense.id;
   detailEditingKind = expense.kind;
   setText(byId("cat-expense-title"), "expense.edit");
-  byId("cat-expense-amount").value = expense.amount;
+  byId("cat-expense-amount").value = expense.frequency === "weekly" ? expense.entered_amount : expense.amount;
   byId("cat-expense-note").value = expense.note || "";
   byId("cat-expense-date").value = expense.date;
   byId("cat-expense-fixed").checked = Boolean(expense.is_fixed);
+  byId("cat-expense-weekly").checked = expense.frequency === "weekly";
+  showWeeklyOption("cat-expense");
   byId("cat-expense-error").textContent = "";
   setText(byId("cat-expense-save"), "common.saveChanges");
   byId("cat-expense-cancel").hidden = false;
@@ -849,6 +955,7 @@ async function saveCategoryExpense(event) {
     note: byId("cat-expense-note").value.trim(),
     date: byId("cat-expense-date").value || null,
     is_fixed: byId("cat-expense-fixed").checked,
+    frequency: readFrequency("cat-expense"),
     source: "typed",
   };
   const problem = findExpenseProblem(expense);
@@ -943,6 +1050,10 @@ function startMoneyTab() {
     button.addEventListener("click", () => pickKind(button.dataset.kind));
   });
   byId("expense-form").addEventListener("submit", saveExpenseForm);
+  byId("scan-bill-btn").addEventListener("click", openBillPicker);
+  byId("scan-bill-input").addEventListener("change", scanPickedBill);
+  byId("expense-fixed").addEventListener("change", () => showWeeklyOption("expense"));
+  byId("cat-expense-fixed").addEventListener("change", () => showWeeklyOption("cat-expense"));
   byId("expense-note").addEventListener("input", onExpenseNoteTyped);
   byId("expense-delete").addEventListener("click", deleteShownExpense);
   byId("budget-form").addEventListener("submit", saveBudgetForm);

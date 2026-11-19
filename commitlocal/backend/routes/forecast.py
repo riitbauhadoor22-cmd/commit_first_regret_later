@@ -36,7 +36,8 @@ def read_forecast(today: Optional[datetime.date] = Query(default=None),
         savings = read_savings_values(db, user_id)
         info = read_info_status(db, user_id, month or today.isoformat()[:7])
     # Same shared maths as the Money card: left at month end = income − forecast spending − saved_this_month
-    flows = build_month_summary(incomes, expenses, loans, savings, info, month or today.isoformat()[:7], today, budgets)
+    flows = build_month_summary(incomes, expenses, loans, savings, info, month or today.isoformat()[:7], today, budgets,
+                                deposits)
     return {"today": today.isoformat(),
             "spending": flows["forecast"],
             "goals": build_goal_etas(goals, deposits, today)}

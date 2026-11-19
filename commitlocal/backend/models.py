@@ -2,10 +2,12 @@
 # that doesn't fit) and (2) the database tables (SQLAlchemy ORM, at the bottom of this file).
 import datetime
 import re
+import uuid
 from typing import Literal, Optional
 
 from pydantic import BaseModel, EmailStr, Field, TypeAdapter, field_validator
 
+from budget_plans import PLANS
 from categories import CATEGORIES, GOAL_CPI_CATEGORIES, INCOME_TYPES
 
 MAX_AMOUNT = 10_000_000
@@ -161,6 +163,9 @@ class ExpenseForm(BaseModel):
     note: str = Field(default="", max_length=100)
     date: Optional[datetime.date] = None                     # empty = today
     is_fixed: bool = False
+    # how often it is paid; empty = from is_fixed (old clients). weekly / monthly repeat (= a fixed bill),
+    # one-off = only on its date. Weekly amounts count as amount × 52 ÷ 12 a month.
+    frequency: Optional[Literal["one-off", "weekly", "monthly"]] = None
     source: Literal["typed", "voice", "quick"] = "typed"
 
     @field_validator("category")
@@ -169,6 +174,10 @@ class ExpenseForm(BaseModel):
         if value not in CATEGORIES:
             raise ValueError("Pick one of: " + ", ".join(CATEGORIES))
         return value
+
+
+class BillScanForm(BaseModel):
+    image: str = Field(max_length=7_100_000)  # a data URL: "data:image/jpeg;base64,..." (5 MB image ≈ 7 MB text)
 
 
 class QuickAddForm(BaseModel):
@@ -212,6 +221,15 @@ class GoalForm(BaseModel):
 
 class AddMoneyForm(BaseModel):
     amount: float = Field(gt=0, le=MAX_AMOUNT)
+
+
+class SavingsEntryForm(BaseModel):
+    """Add to savings (deposit) or take out (withdrawal), for one place. goal_id is needed for place "goal"."""
+    kind: Literal["deposit", "withdrawal"]
+    amount: float = Field(gt=0, le=MAX_AMOUNT)
+    date: Optional[datetime.date] = None  # empty = today
+    place: Literal["general", "safety_net", "goal"] = "general"
+    goal_id: Optional[uuid.UUID] = None
 
 
 # ===== ARCADE: BUDGET CHALLENGE GAME =====
@@ -290,6 +308,30 @@ class WeeklyBudgetForm(BaseModel):
     today: Optional[datetime.date] = None  # the phone's local date (badges count weeks from the day it was set)
 
 
+# ===== BUDGET PLAN (routes/plan.py) =====
+PlanId = Literal[tuple(PLANS)]
+
+
+class PlanStartForm(BaseModel):
+    """The first plan (no plan yet). The answers pick a suggested plan; plan_id = the one the user confirmed."""
+    life: Literal["studying", "working", "both"]
+    pays_rent: bool
+    has_loan: bool
+    irregular_income: bool
+    plan_id: Optional[PlanId] = None  # empty = take the suggested plan
+    today: Optional[datetime.date] = None
+
+
+class PlanChangeForm(BaseModel):
+    plan_id: PlanId
+    start_now: bool = False                 # stricter plans only: start this month instead of next
+    confirm_looser: bool = False            # looser plans: the second "Yes, switch" tap
+    reason: Optional[Literal["rent_up", "lost_income", "loan_up", "other"]] = None  # needed for a looser plan
+    reason_note: str = Field(default="", max_length=100)
+    from_recommendation: bool = False
+    today: Optional[datetime.date] = None
+
+
 # ===== FINANCIAL INSIGHTS (Groq) =====
 class InsightRequestForm(BaseModel):
     month: Optional[str] = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")  # YYYY-MM, empty = this month
@@ -300,7 +342,6 @@ class InsightRequestForm(BaseModel):
 # Rules: UUID ids, every money table has user_id -> users.id (ON DELETE CASCADE),
 # money is stored as whole cents (Rs 150.50 -> 15050) and can never be negative (CHECK).
 # to_dict() turns a row into the JSON the frontend expects (rupees, text dates, text ids).
-import uuid  # noqa: E402
 
 import sqlalchemy as sa  # noqa: E402
 from sqlalchemy.orm import DeclarativeBase, mapped_column  # noqa: E402
@@ -351,7 +392,7 @@ class User(Base):
     """Login data only."""
     __tablename__ = "users"
     id = id_column()
-    email = mapped_column(sa.String(254), nullable=True, unique=True)    # always lowercase
+    email = mapped_column(sa.String(254), nullable=False, unique=True)   # always lowercase
     username = mapped_column(sa.String(30), nullable=True, unique=True)  # always lowercase; empty for old accounts
     password_hash = mapped_column(sa.String(100), nullable=False)        # bcrypt, never the real password
     failed_attempts = mapped_column(sa.Integer, nullable=False, default=0)
@@ -369,7 +410,6 @@ class Profile(Base):
     user_id = user_id_column(unique=True)  # one profile per user
     full_name = mapped_column(sa.String(100), nullable=True)  # optional since migration 0009 (username is shown instead)
     date_of_birth = mapped_column(sa.Date, nullable=True)
-    phone = mapped_column(sa.String(20), nullable=True, unique=True)  # no longer used (phone login removed); kept so no data is deleted
     language = mapped_column(sa.String(3), nullable=True)  # en / fr / mfe, null = never chosen
     occupation = mapped_column(sa.String(60), nullable=True)  # optional (Profile tab), null = not added
     updated_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
@@ -425,14 +465,21 @@ class Expense(Base):
     kind = mapped_column(sa.String(4), nullable=False)                       # need or want
     description = mapped_column(sa.String(100), nullable=False, default="")  # API: "note"
     date = mapped_column(sa.Date, nullable=False, index=True)                # fixed bill: first month it counts
-    is_fixed = mapped_column(sa.Boolean, nullable=False, default=False)      # True = repeats every month
+    is_fixed = mapped_column(sa.Boolean, nullable=False, default=False)      # True = repeats (a fixed bill)
+    weekly = mapped_column(sa.Boolean, nullable=False, default=False)        # repeats every WEEK (migration 0011)
     source = mapped_column(sa.String(5), nullable=False, default="typed")    # typed, voice, quick
     created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
     __table_args__ = (*not_negative("amount_cents"),
                       sa.CheckConstraint("kind IN ('need', 'want')", name="kind_valid"))
 
     def to_dict(self):
-        return {"id": str(self.id), "user_id": str(self.user_id), "amount": to_rupees(self.amount_cents),
+        """amount = what it costs a MONTH (weekly × 52 ÷ 12), so every total counts weekly bills right;
+        entered_amount = what the user typed (per week for weekly bills)."""
+        weekly = bool(self.is_fixed and self.weekly)
+        entered = to_rupees(self.amount_cents)
+        return {"id": str(self.id), "user_id": str(self.user_id),
+                "amount": round(entered * 52 / 12, 2) if weekly else entered, "entered_amount": entered,
+                "frequency": "weekly" if weekly else "monthly" if self.is_fixed else "one-off",
                 "category": self.category, "kind": self.kind, "note": self.description, "date": iso(self.date),
                 "is_fixed": int(self.is_fixed), "source": self.source, "created_at": iso(self.created_at)}
 
@@ -495,7 +542,8 @@ class SavingsGoal(Base):
 
 
 class Deposit(Base):
-    """Money put into a goal (goal_id) or into the safety net (goal_id empty)."""
+    """A savings entry (migration 0012): money put in (kind deposit) or taken out (withdrawal) of general savings,
+    the safety net or a goal (goal_id). Each one also moves the bank balance; saved this month = in − out."""
     __tablename__ = "deposits"
     id = id_column()
     user_id = user_id_column()
@@ -503,12 +551,16 @@ class Deposit(Base):
                             nullable=True, index=True)
     amount_cents = cents_column()
     date = mapped_column(sa.Date, nullable=False, index=True)
+    kind = mapped_column(sa.String(10), nullable=False, default="deposit")     # deposit / withdrawal
+    place = mapped_column(sa.String(10), nullable=False, default="safety_net")  # general / safety_net / goal
     created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
-    __table_args__ = not_negative("amount_cents")
+    __table_args__ = (*not_negative("amount_cents"),
+                      sa.CheckConstraint("kind IN ('deposit', 'withdrawal')", name="kind_valid"),
+                      sa.CheckConstraint("place IN ('general', 'safety_net', 'goal')", name="place_valid"))
 
     def to_dict(self):
         return {"id": str(self.id), "user_id": str(self.user_id),
-                "goal_id": str(self.goal_id) if self.goal_id else None,
+                "goal_id": str(self.goal_id) if self.goal_id else None, "kind": self.kind, "place": self.place,
                 "amount": to_rupees(self.amount_cents), "date": iso(self.date), "created_at": iso(self.created_at)}
 
 
@@ -612,3 +664,27 @@ class EarnedBadge(Base):
     code = mapped_column(sa.String(30), nullable=False)        # FIRST_WEEK, BUDGET_KEEPER, CONSISTENT_PLANNER, SAVINGS_STREAK
     earned_on = mapped_column(sa.Date, nullable=False)         # the Sunday of the week that completed it
     __table_args__ = (sa.UniqueConstraint("user_id", "code", name="uq_earned_badges_user_code"),)
+
+
+class PlanPeriod(Base):
+    """Plan history (migration 0011): which budget plan a user follows from start_month to end_month (YYYY-MM,
+    both included; end empty = still running). A change always starts on the 1st of a month; rows are never edited
+    after their months are over."""
+    __tablename__ = "plan_history"
+    id = id_column()
+    user_id = user_id_column()
+    plan_id = mapped_column(sa.String(30), nullable=False)
+    start_month = mapped_column(sa.String(7), nullable=False)
+    end_month = mapped_column(sa.String(7), nullable=True)
+    reason = mapped_column(sa.String(30), nullable=False)          # start / recommended / rent_up / lost_income / ...
+    reason_note = mapped_column(sa.String(100), nullable=False, default="")
+    was_recommended = mapped_column(sa.Boolean, nullable=False, default=False)
+    requested_month = mapped_column(sa.String(7), nullable=False)  # month the change was asked for (1 per month)
+    created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
+
+    def to_dict(self):
+        return {"id": str(self.id), "plan_id": self.plan_id, "start_month": self.start_month,
+                "end_month": self.end_month, "reason": self.reason, "reason_note": self.reason_note,
+                "was_recommended": self.was_recommended, "requested_month": self.requested_month,
+                "created_at": iso(self.created_at)}
+

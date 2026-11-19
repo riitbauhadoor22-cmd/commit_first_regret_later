@@ -51,7 +51,19 @@
     return { needs: (needs / total) * 100, wants: (wants / total) * 100, savings: (savings / total) * 100 };
   }
 
-  const GameCalc = { toAmount, isBadAmount, allocationTotals, barWidths, parseUtc };
+  // Rupees a cost event leaves the budget over income once its category gets the raised minimum (0 = fine).
+  // Same rule as the server (event_shortfall in backend/game/budget_engine.py).
+  function eventShortfall(categories, values, income, event) {
+    if (!event || event.type !== "cost") return 0;
+    const category = (categories || []).find((c) => c.id === event.category);
+    if (!category) return 0;
+    const minimum = (category.locked !== undefined ? category.locked : category.min_amount || 0) + event.amount;
+    const extraCents = Math.max(0, Math.round((minimum - toAmount((values || {})[category.id])) * 100));
+    const totals = allocationTotals(categories, values, income);
+    return Math.max(0, extraCents - Math.round(totals.left * 100)) / 100; // left < extra -> short by the difference
+  }
+
+  const GameCalc = { toAmount, isBadAmount, allocationTotals, barWidths, parseUtc, eventShortfall };
   if (typeof window !== "undefined") window.GameCalc = GameCalc; // browser
   if (typeof module !== "undefined" && module.exports) module.exports = GameCalc; // Node tests
 })();

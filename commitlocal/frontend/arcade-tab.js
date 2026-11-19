@@ -9,6 +9,7 @@ const gameState = {
   bestScores: {},    // {"1": 90, ...}
   attempt: null,     // {attempt_id, level, has_event} of the game being played
   event: null,       // the surprise event once revealed
+  shortfall: 0,      // rupees the revealed event leaves the budget over income (0 = fine), updated while typing
   values: {},        // what the player typed {category id: text}
   result: null,      // last final result (for redrawing after a language switch)
   busy: false,
@@ -51,7 +52,7 @@ async function startGame(levelNumber) {
   gameState.busy = true;
   try {
     const attempt = await startGameAttempt(levelNumber, byId("game-events").checked);
-    Object.assign(gameState, { attempt: attempt, event: null, result: null, values: {} });
+    Object.assign(gameState, { attempt: attempt, event: null, shortfall: 0, result: null, values: {} });
     attempt.level.categories.forEach((category) => {
       gameState.values[category.id] = category.locked !== undefined ? String(category.locked) : "";
     });
@@ -82,6 +83,7 @@ async function submitGame(event) {
     const reply = await submitGameAttempt(gameState.attempt.attempt_id, allocation, isFinal);
     if (reply.stage === "event") {
       gameState.event = reply.event;
+      gameState.shortfall = reply.shortfall || 0;
       drawGamePlay();
       byId("game-event").scrollIntoView({ block: "center", behavior: "smooth" });
     } else {
@@ -170,6 +172,8 @@ function drawGameEvent() {
     makeElement("p", "", t("game.event." + event.id, { amount: gameMoney(event.amount) })),
     makeElement("p", "muted", effect + " " + t("game.adjustOnce"))
   );
+  // The event pushes the budget over income: say by how much (updated live in updateGameTotals)
+  box.append(makeElement("p", "message error game-shortfall"));
 }
 
 function makeGameField(category) {
@@ -205,7 +209,14 @@ function updateGameTotals() {
   left.textContent = isOver
     ? t("game.over", { amount: gameMoney(-totals.left) })
     : t("game.left", { amount: gameMoney(totals.left) });
-  byId("game-submit").disabled = isOver; // over income can't be submitted (the server blocks it too)
+  // Live event shortfall: the final submit stays blocked until the player adds the missing money
+  gameState.shortfall = GameCalc.eventShortfall(gameState.attempt.level.categories, gameState.values, gameIncome(), gameState.event);
+  const shortBox = byId("game-event").querySelector(".game-shortfall");
+  if (shortBox) {
+    shortBox.hidden = gameState.shortfall <= 0;
+    shortBox.textContent = gameState.shortfall > 0 ? t("game.eventShortfall", { amount: gameMoney(gameState.shortfall) }) : "";
+  }
+  byId("game-submit").disabled = isOver || gameState.shortfall > 0; // the server blocks both too
 }
 
 function drawGameBar(prefix, totals) {
@@ -305,7 +316,7 @@ function animateGameScore(score, animate) {
 
 // ===== UI: BUTTONS + LANGUAGE SWITCH =====
 function leaveGame() {
-  Object.assign(gameState, { attempt: null, event: null, result: null, values: {} });
+  Object.assign(gameState, { attempt: null, event: null, shortfall: 0, result: null, values: {} });
   showGameSection("game-card");
   loadArcadeTab();
 }

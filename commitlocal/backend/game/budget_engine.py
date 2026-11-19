@@ -50,3 +50,11 @@ def group_totals(level, cents):
     for category in level["categories"]:
         totals[category["kind"]] += cents[category["id"]]
     return totals
+
+
+def event_shortfall(level, cents, event):
+    """Cents the budget would be over income after a cost event, once its category gets the raised minimum (0 = fine)."""
+    if event is None or event["type"] != "cost":
+        return 0
+    extra = max(0, minimums(level, event)[event["category"]] - cents[event["category"]])  # increase still needed
+    return max(0, sum(cents.values()) + extra - effective_income(level, event))

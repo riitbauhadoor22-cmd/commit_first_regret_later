@@ -61,3 +61,14 @@ test("every game category, event and level in game/scenarios.py has an English t
     "no_savings", "savings_low", "unassigned", "event_handled", "event_failed", "great"])
     assert.ok("game.tip." + code in en, code);
 });
+
+// ===== EVENT SHORTFALL (same rule as the server) =====
+test("event shortfall: cost event not covered by money left, 0 once fixed or for other events", () => {
+  const cats = [{ id: "transport", kind: "need", min_amount: 1500 }, { id: "fun", kind: "want" }];
+  const cost = { type: "cost", category: "transport", amount: 500 };
+  assert.equal(G.eventShortfall(cats, { transport: "1800", fun: "13200" }, 15000, cost), 200);
+  assert.equal(G.eventShortfall(cats, { transport: "2000", fun: "13000" }, 15000, cost), 0);
+  assert.equal(G.eventShortfall(cats, { transport: "1800", fun: "12900" }, 15000, cost), 0); // Rs 300 left covers +200
+  assert.equal(G.eventShortfall(cats, { transport: "1800", fun: "13200" }, 15000, null), 0);
+  assert.equal(G.eventShortfall(cats, { transport: "1800", fun: "13200" }, 16000, { type: "bonus", amount: 1000 }), 0);
+});

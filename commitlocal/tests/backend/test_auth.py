@@ -9,7 +9,7 @@ import database
 import email_sender
 import routes.auth
 from conftest import PASSWORD, age_codes, log_in, register
-from models import Profile, User
+from models import User
 
 REGISTER = "/api/auth/register"
 
@@ -151,10 +151,8 @@ def test_register_username_is_lowercase(client):  # saved trimmed + lowercase
     assert saved_username() == "asha_k"
 
 
-def test_register_ignores_a_phone_number(client):  # phone numbers are no longer taken: an old client's is not saved
+def test_register_ignores_a_phone_number(client):  # phone numbers are no longer taken: an old client's is ignored
     assert client.post(REGISTER, json=form(phone="5123 4567")).status_code == 201
-    with database.open_db() as db:
-        assert db.scalar(select(Profile.phone)) is None
 
 
 @pytest.mark.parametrize("username", ["", "ab", "a" * 31, "asha k", "asha@k", "ásha", "   "])
