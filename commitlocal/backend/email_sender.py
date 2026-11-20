@@ -38,7 +38,7 @@ def send_with_brevo(to_email, code):
         raise RuntimeError("Brevo is not set up: fill EMAIL_FROM in backend/.env")
     subject, body = email_text(code)
     payload = {
-        "sender": {"email": sender, "name": os.getenv("EMAIL_FROM_NAME", "").strip() or "Pennywise"},
+        "sender": {"email": sender, "name": os.getenv("EMAIL_FROM_NAME", "").strip() or "Pennyworth"},
         "to": [{"email": to_email}],
         "subject": subject,
         "textContent": body,

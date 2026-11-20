@@ -6,7 +6,7 @@
 # Back up Neon (Branches → Create branch) before every deploy: migrations run when the app starts.
 services:
   - type: web
-    name: pennywise                # → https://pennywise.onrender.com
+    name: pennyworth                # → https://pennyworth.onrender.com
     runtime: python
     plan: free
     rootDir: commitlocal/backend
@@ -28,7 +28,7 @@ services:
         sync: false
       - key: EMAIL_FROM            # required: sender address, verified in Brevo (Senders & IP)
         sync: false
-      - key: EMAIL_FROM_NAME       # optional: empty = Pennywise
+      - key: EMAIL_FROM_NAME       # optional: empty = Pennyworth
         sync: false
       - key: GMAIL_ADDRESS         # not used on Render (Brevo is used when BREVO_API_KEY is set)
         sync: false

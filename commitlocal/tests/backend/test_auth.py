@@ -118,7 +118,7 @@ def test_gmail_not_set_up_gives_clear_error(client, monkeypatch, no_real_smtp): 
 def brevo(monkeypatch):
     """Turns Brevo on and fakes its HTTP call (the real API is never called). Returns the list of sent requests."""
     monkeypatch.setenv("BREVO_API_KEY", "fake-brevo-key")
-    monkeypatch.setenv("EMAIL_FROM", "codes@pennywise.test")
+    monkeypatch.setenv("EMAIL_FROM", "codes@pennyworth.test")
     monkeypatch.setenv("EMAIL_FROM_NAME", "")
     calls = []
 
@@ -135,7 +135,7 @@ def test_brevo_used_when_key_is_set(brevo, no_real_smtp):
     call = brevo[0]
     assert call["url"] == "https://api.brevo.com/v3/smtp/email" and call["headers"]["api-key"] == "fake-brevo-key"
     assert call["timeout"] <= 10
-    assert call["json"]["sender"] == {"email": "codes@pennywise.test", "name": "Pennywise"}
+    assert call["json"]["sender"] == {"email": "codes@pennyworth.test", "name": "Pennyworth"}
     assert call["json"]["to"] == [{"email": "asha@example.com"}]
     assert call["json"]["subject"] == "Your login code: 123456" and "123456" in call["json"]["textContent"]
 
