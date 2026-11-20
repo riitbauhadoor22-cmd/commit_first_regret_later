@@ -9,8 +9,8 @@ import math
 from datetime import date, timedelta
 
 from info_status import get_info_status, is_known
-from money import (get_category_spending, get_expenses_in_month, get_fixed_bills, get_goal_statuses, get_month_of,
-                   get_monthly_income, get_monthly_target, get_percent, get_saved_in_month, get_total,
+from money import (counts_as_saved, get_category_spending, get_expenses_in_month, get_fixed_bills, get_goal_statuses,
+                   get_month_of, get_monthly_income, get_monthly_target, get_percent, get_saved_in_month, get_total,
                    get_total_by_kind, get_total_spent, to_money)
 from services.financial_analysis import get_previous_month
 from services.forecast import build_goal_etas
@@ -119,6 +119,14 @@ def get_first_savings_month(deposits, goals, savings_row=None):
     return min(months) if months else None
 
 
+def get_saving_point(month, saved, income):
+    """One month of the saving-rate chart. Saved more than the income (or any saving with income 0) → the rate is
+    capped at 100% and over_income is set (the screen explains it). Never ÷ 0."""
+    over_income = saved > 0 and saved > income
+    rate = 100.0 if over_income else get_percent(saved, income)
+    return {"month": month, "saved": saved, "income": income, "rate": rate, "over_income": over_income}
+
+
 def build_savings_series(records, choices, month):
     """Saving rate = saved_this_month (shared month maths: the planned monthly saving) ÷ take-home income × 100,
     for months with income given and from the month the user started saving (a goal, a deposit or a target).
@@ -132,7 +140,7 @@ def build_savings_series(records, choices, month):
             continue
         flows = get_month_flows(records, choices, each)
         income, saved = flows["income"], flows["saved"] or 0
-        points.append({"month": each, "saved": saved, "income": income, "rate": get_percent(saved, income)})
+        points.append(get_saving_point(each, saved, income))
     if not points:
         return {"available": False, "reason": "NO_INCOME", "months": [], "guide": SAVINGS_GUIDE, "trend": None}
     trend = None
@@ -413,7 +421,7 @@ def get_finished_weeks(expenses, weekly_budget, today):
 def get_saving_weeks(deposits, today, count=4):
     """True for each finished week (newest last) that had money put into savings: the 'Savings Streak' needs 4 in
     a row. Taking money out doesn't count as saving."""
-    deposits = [d for d in deposits if d.get("kind", "deposit") == "deposit"]
+    deposits = [d for d in deposits if d.get("kind", "deposit") == "deposit" and counts_as_saved(d)]
     weeks = []
     week = get_week_start(today) - timedelta(days=7)
     first = min((date.fromisoformat(d["date"]) for d in deposits), default=None)

@@ -78,13 +78,15 @@ def add_to_safety_net(form: AddMoneyForm, user_id: uuid.UUID = Depends(require_u
 
 
 # ===== SAVINGS ENTRIES =====
-def save_entry(db, user_id, kind, amount, day, place, goal_id):
+def save_entry(db, user_id, kind, amount, day, place, goal_id, source="income"):
     cents = to_cents(amount)
+    source = source if kind == "deposit" else "income"  # taking money out always counts against this month
     goal_id = goal_id if place == "goal" else None
     if place == "goal" and goal_id is None:
         raise AppError(400, "GOAL_REQUIRED", "Pick the goal this money is for.")
     apply_entry(db, user_id, kind, place, goal_id, cents)
-    entry = Deposit(user_id=user_id, kind=kind, place=place, goal_id=goal_id, amount_cents=cents, date=day)
+    entry = Deposit(user_id=user_id, kind=kind, place=place, goal_id=goal_id, amount_cents=cents, date=day,
+                    source=source)
     db.add(entry)
     db.flush()
     return entry
@@ -114,7 +116,7 @@ def list_entries(month: Optional[str] = Query(default=None, pattern=MONTH_PATTER
 def add_entry(form: SavingsEntryForm, user_id: uuid.UUID = Depends(require_user)):
     with open_db() as db:
         entry = save_entry(db, user_id, form.kind, form.amount, form.date or datetime.date.today(), form.place,
-                           form.goal_id)
+                           form.goal_id, form.source)
         return {**build_savings_info(db, user_id), "entry": entry.to_dict()}
 
 
@@ -127,7 +129,7 @@ def edit_entry(entry_id: uuid.UUID, form: SavingsEntryForm, user_id: uuid.UUID =
         undo_entry(db, user_id, old)
         db.delete(old)
         db.flush()
-        entry = save_entry(db, user_id, form.kind, form.amount, day, form.place, form.goal_id)
+        entry = save_entry(db, user_id, form.kind, form.amount, day, form.place, form.goal_id, form.source)
         return {**build_savings_info(db, user_id), "entry": entry.to_dict()}
 
 

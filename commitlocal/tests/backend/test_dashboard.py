@@ -10,7 +10,7 @@ import database
 import routes.dashboard
 from conftest import log_in
 from models import WeeklyBudget
-from services.dashboard import (build_dashboard, build_health_score, build_loans, build_spending_series,
+from services.dashboard import (build_dashboard, get_saving_point, build_health_score, build_loans, build_spending_series,
                                 find_new_badges, get_finished_weeks, get_week_start, project_loan)
 
 TODAY = date.today()
@@ -109,10 +109,37 @@ def test_savings_contributions_and_goals(logged_in):
     assert data["balance"]["balance"] == 7000
     assert data["balance"]["put_aside"] == 8000 and data["balance"]["bank_balance"] == 8000
     point = data["savings"]["months"][-1]
-    assert point == {"month": MONTH, "saved": 8000, "income": 20000, "rate": 40.0} and data["savings"]["guide"] == 20
+    assert point == {"month": MONTH, "saved": 8000, "income": 20000, "rate": 40.0, "over_income": False}
+    assert data["savings"]["guide"] == 20
     jar = data["jar"]["goals"][0]
     assert (jar["name"], jar["saved"], jar["target"], jar["remaining"], jar["percent"]) == ("Laptop", 8000, 20000,
                                                                                           12000, 40.0)
+
+
+def test_money_already_had_is_not_saved_this_month(logged_in):  # the 216% bug: old money isn't this month's saving
+    add_income(logged_in, 20000)
+    logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 40000, "place": "general",
+                                                 "source": "already_had"})
+    logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 3000, "place": "general"})
+    data = dashboard(logged_in)
+    point = data["savings"]["months"][-1]
+    assert point["saved"] == 3000 and point["rate"] == 15.0 and point["over_income"] is False
+    assert data["balance"]["bank_balance"] == 43000  # still in total savings
+    assert data["recap"]["savings"] == 3000
+
+
+def test_saving_rate_capped_at_100_when_saved_more_than_income(logged_in):
+    add_income(logged_in, 20000)
+    logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 43200, "place": "general"})
+    point = dashboard(logged_in)["savings"]["months"][-1]
+    assert point["saved"] == 43200 and point["income"] == 20000
+    assert point["rate"] == 100.0 and point["over_income"] is True
+
+
+@pytest.mark.parametrize("saved, rate, over", [(0, 0.0, False), (500, 100.0, True)])
+def test_saving_point_with_income_0(saved, rate, over):  # never ÷ 0
+    assert get_saving_point(MONTH, saved, 0) == {"month": MONTH, "saved": saved, "income": 0, "rate": rate,
+                                                 "over_income": over}
 
 
 # ===== 4. NO SAVINGS GOALS =====

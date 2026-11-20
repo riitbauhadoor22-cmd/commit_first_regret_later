@@ -10,8 +10,8 @@ import calendar
 import math
 from datetime import date
 
-from money import (entry_sign, get_everyday_expenses, get_fixed_bills, get_month_number, get_month_of,
-                   get_monthly_income, get_total, to_money)
+from money import (counts_as_saved, entry_sign, get_everyday_expenses, get_fixed_bills, get_month_number,
+                   get_month_of, get_monthly_income, get_total, to_money)
 
 MIN_DAYS = 5               # before the 5th of the month one big shop would make the guess jump around
 GOAL_HISTORY_MONTHS = 3    # the average saved per month uses up to the last 3 months
@@ -81,7 +81,7 @@ def get_goal_eta(goal, deposits, today):
         return None
     this_number = get_month_number(today.isoformat()[:7])
     first_number = this_number - GOAL_HISTORY_MONTHS + 1
-    recent = [d for d in deposits if d.get("goal_id") == goal["id"]
+    recent = [d for d in deposits if d.get("goal_id") == goal["id"] and counts_as_saved(d)  # pace, not old money
               and first_number <= get_month_number(get_month_of(d["date"])) <= this_number]
     if not recent:
         return None

@@ -29,6 +29,24 @@ def test_deposit_raises_total_and_saved_this_month(logged_in):
     assert logged_in.get("/api/summary").json()["saved"] == 1500
 
 
+def test_money_already_had_moves_totals_but_is_not_saved_this_month(logged_in):
+    goal_id = new_goal(logged_in, target=50000)
+    data = entry(logged_in, amount=20000, place="goal", goal_id=goal_id, source="already_had").json()
+    assert data["bank_balance"] == 20000 and data["saved_this_month"] == 0
+    assert data["entry"]["source"] == "already_had"
+    assert logged_in.get("/api/goals").json()["goals"][0]["saved_amount"] == 20000
+    entry(logged_in, amount=2000, place="safety_net", source="already_had")
+    data = entry(logged_in, amount=1000).json()  # default: this month's income
+    assert data["bank_balance"] == 23000 and data["safety_net"]["saved"] == 2000 and data["saved_this_month"] == 1000
+    assert logged_in.get("/api/summary").json()["saved"] == 1000
+
+
+def test_take_out_always_counts_against_this_month(logged_in):  # a source sent with a withdrawal is ignored
+    entry(logged_in, amount=5000, source="already_had")
+    data = entry(logged_in, "withdrawal", 1000, source="already_had").json()
+    assert data["entry"]["source"] == "income" and data["saved_this_month"] == -1000
+
+
 def test_deposit_and_take_out_of_safety_net_and_goal(logged_in):
     goal_id = new_goal(logged_in)
     entry(logged_in, amount=2000, place="safety_net")

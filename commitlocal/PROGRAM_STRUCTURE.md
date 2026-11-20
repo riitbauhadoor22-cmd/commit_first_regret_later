@@ -44,9 +44,17 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 | Safety net / a goal | part of total savings set aside | Add / Take out with that place picked |
 - Editing or deleting an entry undoes its effect. Nothing can go below 0; a goal never goes above its target.
 - "Update total" is NOT counted as saved this month.
+- **Add to savings → "Where is this money from?"**: "This month's income" (default) counts as saved this month;
+  "Money I already had" moves total savings and the goal / safety net but is NOT saved this month (like the starting
+  balance). Stored as `deposits.source` (`income` / `already_had`, migration 0013). Taking out always counts.
+  One rule (`money.counts_as_saved`) feeds every saved-this-month number: Money card, plan results, Dashboard
+  (saving rate, recap, habits score, savings streak), goal ready-by pace and insights.
 - Savings states (`info_status.py`): **missing** (never added) → "You haven't added any savings yet…" + Add button,
   never off plan · **none** or 0 → "No savings this month so far. That's okay…" · below target → "You've saved
-  Rs X of your Rs Y goal…" · on target → "You're on track!". Never blaming.
+  Rs X of your Rs Y goal…" · on target → "You're on track!" · saved but Left to spend below 0 (**OVER_INCOME**) →
+  "You've used more than this month's income – check your spending or move less into savings." Never blaming.
+- Left to spend = In − Out − saved this month, shown in whole rupees. Below 0 → red + "Your savings and spending are
+  more than your income." (or "Your spending is more than your income." when nothing was saved).
 
 ### My budget plan (budget style)
 - **Styles** (needs / wants / savings): 50/30/20 (50/30/20) · 60% plan (70/10/20) · Student caps (60/30/10) ·
@@ -72,6 +80,9 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
   bill – type it in instead", the form stays open.
 
 ### Dashboard
+- Saving rate = saved this month ÷ income, capped at 100% (chart axis max 100%). Saved more than income →
+  "You put away more than you earned this month…". Income 0 → 0% (or 100% + that message if something was saved).
+  Label: "This month: saved Rs X of Rs Y income (Z%)".
 - Tiles: money available this month, monthly spending (6 months), saving rate (real saving ÷ income), loan payoff,
   monthly recap, money habits score (0–100, not a credit score), savings jars (one per goal). Plain maths, never AI.
 
@@ -111,7 +122,7 @@ commitlocal/
 │   ├── services/             month_summary (shared month maths), budget_plan, bill_scan, ai_insights,
 │   │                         dashboard, forecast, financial_analysis, inflation
 │   ├── game/                 Budget Challenge rules
-│   └── migrations/versions/  database changes 0001–0012
+│   └── migrations/versions/  database changes 0001–0013
 └── tests/                    backend (pytest) and frontend (node --test)
 ```
 **Rule:** the maths and every rule live in the backend; the frontend only shows the result.
@@ -120,12 +131,13 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
 ## 4. Data
 - SQLite on your computer (`backend/app.db`), PostgreSQL (Neon) in production. Money is stored in cents.
 - Tables: users, profiles, sessions, otp_codes, income, expenses (+ `weekly`), budgets, savings_settings,
-  savings_goals, deposits (savings entries: `kind` deposit / withdrawal, `place` general / safety_net / goal),
+  savings_goals, deposits (savings entries: `kind` deposit / withdrawal, `place` general / safety_net / goal, `source`
+  income / already_had),
   my_loans, info_choices, weekly_budgets, earned_badges, game_attempts, ai_insights, ai_requests (also counts bill
   scans, month = "bill-scan"), plan_history.
 - Deleting a user deletes all their rows. The database updates itself (migrations) when the app starts.
 - Recent migrations: 0010 phone removal · 0011 plan_history + expenses.weekly · 0012 savings entries (kind, place;
-  drops an old plan_results table if a draft created it).
+  drops an old plan_results table if a draft created it) · 0013 deposits.source (income / already_had).
 
 ## 5. API
 | Area | Routes |
@@ -171,7 +183,7 @@ Groq, Brevo and Gmail are always faked in tests.
   `commitlocal/backend`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT
   --proxy-headers --forwarded-allow-ips "*"`, health check `/health`, `APP_ENV=production`, auto-deploy on push.
 - **Same address for app + API:** FastAPI serves `frontend/` (`main.py` mounts it last), so no CORS.
-- **Database:** Neon PostgreSQL (`DATABASE_URL`). Alembic migrations (0001–0012) run at every start.
+- **Database:** Neon PostgreSQL (`DATABASE_URL`). Alembic migrations (0001–0013) run at every start.
 - **Runtime files in git:** `backend/AI_model/loan_risk_model.pkl` + `_card.json`, `data/cpi_mauritius.csv`. Missing
   → the app still starts (40% rule only / "Inflation data unavailable"). The old 58 MB `loan_amount_model.pkl` is
   not used and stays out of git.

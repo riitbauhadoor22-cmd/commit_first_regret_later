@@ -152,3 +152,32 @@ test("login.html has exactly one primary Log in button (under the password); the
   assert.match(html, /class="tabs segmented"/); // the top Log in | Register is a toggle, not a second action button
   assert.doesNotMatch(html, /id="reg-name"/); // the Full name field was removed
 });
+
+test("saving rate is shown as a whole percent and never as NaN%", () => {  // dashboard.js formatRate
+  const line = read("dashboard.js").match(/function formatRate[^\n]+/)[0];
+  const formatRate = new Function(line + "; return formatRate;")();
+  assert.equal(formatRate(15.04), "15%");
+  assert.equal(formatRate(100), "100%");
+  assert.equal(formatRate(NaN), "—");
+  assert.equal(formatRate(undefined), "—");
+});
+
+test("Left to spend is shown in whole rupees, never with .66", () => {  // money-tab.js formatLeft
+  const line = read("money-tab.js").match(/function formatLeft[^\n]+/)[0];
+  const formatLeft = new Function("formatMoney", "formatOut", line + "; return formatLeft;")(
+    (v) => "Rs " + v, (v) => "− Rs " + Math.abs(v));
+  assert.equal(formatLeft(34166.66), "Rs 34167");
+  assert.equal(formatLeft(-1000.4), "− Rs 1000");
+  assert.equal(formatLeft(-0.4), "Rs 0");
+  assert.equal(formatLeft(null), "—");
+});
+
+test("negative Left to spend reason talks about real savings, and every language has the over-income warning", () => {
+  for (const lang of ["en", "fr", "mfe"]) {
+    const texts = JSON.parse(read("lang/" + lang + ".json"));
+    assert.ok(texts["savings.status.OVER_INCOME"], lang);
+    assert.ok(!/target|objectif|lobzektif/i.test(texts["money.leftReasonSaving"]), lang);
+  }
+  assert.equal(JSON.parse(read("lang/en.json"))["money.leftReasonSaving"],
+    "Your savings and spending are more than your income.");
+});

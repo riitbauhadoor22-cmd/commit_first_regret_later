@@ -102,11 +102,14 @@ function changeMonth(count) {
 // Numbers the user hasn't given come back as null: they show "—" and a prompt, never "Rs 0".
 // All numbers come from the backend's one shared month maths (In − Out − Saved = Left to spend); the bank
 // balance is never part of them.
+// Left to spend in whole rupees like the rest of the card (Rs 34,167, never .66); below 0 → "− Rs …"
+function formatLeft(value) { return value === null ? "—" : Math.round(value) < 0 ? formatOut(Math.round(value)) : formatMoney(Math.round(value)); }
+
 function drawSummaryCard(summary) {
   const left = byId("left-to-spend");
   const leftKnown = summary.left_to_spend !== null;
-  const negative = leftKnown && summary.left_to_spend < 0;
-  left.textContent = !leftKnown ? "—" : negative ? formatOut(summary.left_to_spend) : formatMoney(summary.left_to_spend);
+  const negative = leftKnown && Math.round(summary.left_to_spend) < 0; // −0.40 rounds to Rs 0: not red
+  left.textContent = formatLeft(summary.left_to_spend);
   left.classList.toggle("negative", negative);
   byId("left-note").hidden = leftKnown;
   const reason = byId("left-reason"); // short reason under a red (negative) number

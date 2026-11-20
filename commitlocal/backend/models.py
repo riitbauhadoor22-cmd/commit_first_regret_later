@@ -230,6 +230,8 @@ class SavingsEntryForm(BaseModel):
     date: Optional[datetime.date] = None  # empty = today
     place: Literal["general", "safety_net", "goal"] = "general"
     goal_id: Optional[uuid.UUID] = None
+    # Add to savings only: income = this month's income (saved this month) · already_had = money already there (not)
+    source: Literal["income", "already_had"] = "income"
 
 
 # ===== ARCADE: BUDGET CHALLENGE GAME =====
@@ -547,7 +549,9 @@ class SavingsGoal(Base):
 
 class Deposit(Base):
     """A savings entry (migration 0012): money put in (kind deposit) or taken out (withdrawal) of general savings,
-    the safety net or a goal (goal_id). Each one also moves the bank balance; saved this month = in − out."""
+    the safety net or a goal (goal_id). Each one also moves the bank balance; saved this month = in − out.
+    source (migration 0013): income = from this month's income · already_had = money the user already had (moves the
+    balances, but is never saved this month)."""
     __tablename__ = "deposits"
     id = id_column()
     user_id = user_id_column()
@@ -557,15 +561,18 @@ class Deposit(Base):
     date = mapped_column(sa.Date, nullable=False, index=True)
     kind = mapped_column(sa.String(10), nullable=False, default="deposit")     # deposit / withdrawal
     place = mapped_column(sa.String(10), nullable=False, default="safety_net")  # general / safety_net / goal
+    source = mapped_column(sa.String(12), nullable=False, default="income",
+                           server_default="income")  # income / already_had
     created_at = mapped_column(sa.DateTime, nullable=False, default=utc_now)
     __table_args__ = (*not_negative("amount_cents"),
                       sa.CheckConstraint("kind IN ('deposit', 'withdrawal')", name="kind_valid"),
-                      sa.CheckConstraint("place IN ('general', 'safety_net', 'goal')", name="place_valid"))
+                      sa.CheckConstraint("place IN ('general', 'safety_net', 'goal')", name="place_valid"),
+                      sa.CheckConstraint("source IN ('income', 'already_had')", name="source_valid"))
 
     def to_dict(self):
         return {"id": str(self.id), "user_id": str(self.user_id),
                 "goal_id": str(self.goal_id) if self.goal_id else None, "kind": self.kind, "place": self.place,
-                "amount": to_rupees(self.amount_cents), "date": iso(self.date), "created_at": iso(self.created_at)}
+                "source": self.source, "amount": to_rupees(self.amount_cents), "date": iso(self.date), "created_at": iso(self.created_at)}
 
 
 class GameAttempt(Base):

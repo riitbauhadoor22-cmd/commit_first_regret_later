@@ -75,7 +75,7 @@ function drawTiles(data) {
   byId("tile-score").textContent = data.health.available ? data.health.score : "—";
   byId("tile-spend").textContent = data.recap.expenses === null ? "—" : formatMoney(Math.round(data.recap.expenses));
   const saving = data.savings;
-  byId("tile-save").textContent = saving.available ? Math.round(saving.months[saving.months.length - 1].rate) + "%" : "—";
+  byId("tile-save").textContent = saving.available ? formatRate(saving.months[saving.months.length - 1].rate) : "—";
   byId("tile-jar").textContent = data.jar.overall_percent === null ? "—" : Math.round(data.jar.overall_percent) + "%";
   const loans = data.loans;
   byId("tile-loans").textContent = loans.available ? formatMoney(Math.round(loans.outstanding))
@@ -246,6 +246,9 @@ function drawSpendingChart(spending) {
 }
 
 // ===== 4. SAVING RATE PER MONTH =====
+// Whole percent; anything that isn't a number shows "—" (never "NaN%")
+function formatRate(rate) { return Number.isFinite(rate) ? Math.round(rate) + "%" : "—"; }
+
 function drawSavingsChart(savings) {
   setHidden("dash-save-empty", savings.available);
   setHidden("dash-save-body", !savings.available);
@@ -255,11 +258,14 @@ function drawSavingsChart(savings) {
   }
   const months = savings.months;
   const last = months[months.length - 1];
-  byId("dash-save-latest").textContent = t("dash.save.latest", { rate: Math.round(last.rate),
-    amount: formatMoney(Math.round(last.saved)) }) + (savings.trend ? " · " + t("dash.save.trend." + savings.trend) : "");
+  // "saved Rs X of Rs Y income (Z%)"; the backend caps the rate at 100% when more was saved than earned
+  byId("dash-save-latest").textContent = t("dash.save.latest", { rate: formatRate(last.rate).replace("%", ""),
+    saved: formatMoney(Math.round(last.saved)), income: formatMoney(Math.round(last.income || 0)) })
+    + (savings.trend ? " · " + t("dash.save.trend." + savings.trend) : "");
+  setHidden("dash-save-over", !last.over_income);
   const options = loanChartOptions(t("dash.chart.month"));
   options.scales.y.title = { display: true, text: "Rs", color: "#a9b7dc" };
-  options.scales.y1 = { position: "right", min: 0, grid: { drawOnChartArea: false },
+  options.scales.y1 = { position: "right", min: 0, max: 100, grid: { drawOnChartArea: false },
     ticks: { color: "#a9b7dc", callback: (v) => v + "%" } };
   options.plugins.tooltip.callbacks.label = (c) => c.dataset.yAxisID === "y1"
     ? c.dataset.label + ": " + Math.round(c.parsed.y) + "%" : c.dataset.label + ": " + LoanCalc.formatRupees(c.parsed.y);

@@ -152,10 +152,16 @@ def entry_sign(entry):
     return -1 if entry.get("kind") == "withdrawal" else 1
 
 
+def counts_as_saved(entry):
+    """Money the user already had (source already_had) moves the balances but is never "saved this month"."""
+    return entry.get("source", "income") != "already_had"
+
+
 def get_saved_in_month(deposits, month):
     """Saved this month = savings deposits − withdrawals dated in this month (goals, safety net and general
-    savings together). Can be below 0 when more was taken out than put in."""
-    return to_money(sum(entry_sign(d) * d["amount"] for d in deposits if get_month_of(d["date"]) == month))
+    savings together), without money the user already had. Can be below 0 when more was taken out than put in."""
+    return to_money(sum(entry_sign(d) * d["amount"] for d in deposits
+                        if get_month_of(d["date"]) == month and counts_as_saved(d)))
 
 
 def get_monthly_target(custom_target, incomes, month):

@@ -136,6 +136,7 @@
           </div>
           <div id="dash-save-body">
             <p id="dash-save-latest" class="muted"></p>
+            <p id="dash-save-over" class="muted small" data-i18n="dash.save.overIncome" hidden>You put away more than you earned this month – some of it came from money you already had.</p>
             <div class="chart-box"><canvas id="dash-save-chart" aria-label="Saving rate per month" data-i18n-aria="dash.save.title"></canvas></div>
             <p class="muted small" data-i18n="dash.save.how">Saving rate = money put into goals and the safety net ÷ take-home income. The dashed line is the 20% guide.</p>
           </div>
@@ -910,6 +911,11 @@
         </label>
         <label><span data-i18n="common.date">Date</span> <input id="money-date" type="date" required></label>
         <label><span id="money-place-label" data-i18n="savings.placeIn">Where does it go?</span> <select id="money-place"></select></label>
+        <label id="money-source-row"><span data-i18n="savings.sourceLabel">Where is this money from?</span>
+          <select id="money-source">
+            <option value="income" data-i18n="savings.sourceIncome">This month's income</option>
+            <option value="already_had" data-i18n="savings.sourceHad">Money I already had</option>
+          </select></label>
         <p id="money-hint" class="muted"></p>
         <p id="money-error" class="message error" role="alert"></p>
         <button id="money-save" class="btn" type="submit" data-i18n="common.save">Save</button>

@@ -61,14 +61,18 @@ def get_saving_progress(saved, target):
             "extra": to_money(max(saved - target, 0))}
 
 
-def get_savings_status(savings_state, saved, target):
+def get_savings_status(savings_state, saved, target, left=None):
     """Which encouraging savings message to show (never blaming): {"code", "saved", "target"}.
     NOT_TRACKED = savings never added (not counted as off plan) · NONE_YET = "I'm not saving" or nothing saved yet ·
-    BELOW_TARGET / ON_TARGET = compared with the monthly saving target · SAVED_NO_TARGET = saved, but no target."""
+    BELOW_TARGET / ON_TARGET = compared with the monthly saving target · SAVED_NO_TARGET = saved, but no target ·
+    OVER_INCOME = saved something but Left to spend is below 0 (spending + savings > income): a gentle warning,
+    never a "well done"."""
     if savings_state == "missing" or saved is None:
         code = "NOT_TRACKED"
     elif savings_state == "none" or saved <= 0:
         code = "NONE_YET"
+    elif left is not None and left < 0:
+        code = "OVER_INCOME"
     elif not target:
         code = "SAVED_NO_TARGET"
     else:
@@ -134,7 +138,7 @@ def build_month_summary(incomes, expenses, loans, savings_values, info, month, t
         "needs_percent": split["percent"]["needs"] if split else None,
         "wants_percent": split["percent"]["wants"] if split else None,
         "savings_percent": split["percent"]["savings"] if split and saved is not None else None,
-        "savings_status": get_savings_status(info["savings"], saved, monthly_target),
+        "savings_status": get_savings_status(info["savings"], saved, monthly_target, left),
         "split": split,
     }
     if today is not None:

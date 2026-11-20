@@ -15,6 +15,13 @@ def test_status_codes():
     assert below == {"code": "BELOW_TARGET", "saved": 500, "target": 2000}
     assert get_savings_status("provided", 2000, 2000)["code"] == "ON_TARGET"
     assert get_savings_status("provided", 500, None)["code"] == "SAVED_NO_TARGET"
+    assert get_savings_status("provided", 2000, 2000, left=0)["code"] == "ON_TARGET"  # exactly used up: still fine
+
+
+def test_no_well_done_when_left_to_spend_is_negative():  # spending + savings > income → gentle warning instead
+    for target in (2000, 500, None):
+        assert get_savings_status("provided", 2000, target, left=-150)["code"] == "OVER_INCOME"
+    assert get_savings_status("provided", 0, 2000, left=-150)["code"] == "NONE_YET"  # nothing saved: not about savings
 
 
 def figures(state, saved, loans=0):
@@ -53,3 +60,30 @@ def test_money_card_messages(logged_in):
     logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 1500, "place": "general"})
     assert status()["code"] == "ON_TARGET"
     assert logged_in.get("/api/plan").json().get("savings_status") is None  # no plan yet: no plan card message
+
+
+def summary_of(client):
+    return client.get("/api/summary").json()
+
+
+def test_left_to_spend_ignores_money_already_had(logged_in):  # old savings never make Left to spend negative
+    month = get_this_month()
+    logged_in.post("/api/income", json={"name": "Job", "type": "Salary", "amount": 10000, "frequency": "monthly",
+                                        "date": month + "-01"})
+    logged_in.post("/api/expenses", json={"amount": 4000, "category": "Groceries"})
+    logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 50000, "place": "general",
+                                                 "source": "already_had"})
+    data = summary_of(logged_in)
+    assert data["saved"] == 0 and data["left_to_spend"] == 6000 and data["left_reason"] is None
+
+
+def test_money_card_warns_when_savings_and_spending_beat_income(logged_in):
+    month = get_this_month()
+    logged_in.post("/api/income", json={"name": "Job", "type": "Salary", "amount": 10000, "frequency": "monthly",
+                                        "date": month + "-01"})
+    logged_in.post("/api/expenses", json={"amount": 9000, "category": "Groceries"})
+    logged_in.post("/api/savings/entries", json={"kind": "deposit", "amount": 2000, "place": "general"})
+    data = summary_of(logged_in)  # saved 2,000 = the 20% target, but 10,000 − 9,000 − 2,000 = −1,000
+    assert data["left_to_spend"] == -1000 and data["left_reason"] == "SAVING_AND_SPENDING"
+    assert data["savings_status"]["code"] == "OVER_INCOME"
+

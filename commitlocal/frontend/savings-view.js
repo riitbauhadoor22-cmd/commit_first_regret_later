@@ -519,6 +519,7 @@ function openEntrySheet(kind, place, goalId, entry) {
   fillPlaceOptions(entry ? placeValue(entry.place, entry.goal_id) : placeValue(place, goalId));
   byId("money-amount").value = entry ? entry.amount : "";
   byId("money-date").value = entry ? entry.date : getTodayText();
+  byId("money-source").value = entry && entry.source === "already_had" ? "already_had" : "income";
   byId("money-error").textContent = "";
   byId("money-delete").hidden = !entry;
   pickEntryKind(moneyTarget.kind);
@@ -556,13 +557,22 @@ function pickEntryKind(kind) {
   const adding = kind === "deposit";
   setText(byId("money-title"), moneyTarget.id ? "savings.editTitle" : adding ? "savings.addTitle" : "savings.takeOutTitle");
   setText(byId("money-place-label"), adding ? "savings.placeIn" : "savings.placeOut");
-  setText(byId("money-hint"), adding ? "savings.hintIn" : "savings.hintOut");
+  byId("money-source-row").hidden = !adding; // taking out always counts against this month
+  showEntryHint();
+}
+
+// Money the user already had moves the totals but is NOT saved this month (backend money.counts_as_saved)
+function showEntryHint() {
+  const adding = moneyTarget.kind === "deposit";
+  const had = byId("money-source").value === "already_had";
+  setText(byId("money-hint"), !adding ? "savings.hintOut" : had ? "savings.hintHad" : "savings.hintIn");
 }
 
 function readEntryForm() {
   const [place, goalId] = byId("money-place").value.split(":");
   return { kind: moneyTarget.kind, amount: Number(byId("money-amount").value), date: byId("money-date").value || null,
-    place: place, goal_id: goalId || null };
+    place: place, goal_id: goalId || null,
+    source: moneyTarget.kind === "deposit" ? byId("money-source").value : "income" };
 }
 
 async function saveMoneyForm(event) {
@@ -646,6 +656,7 @@ function startSavingsView() {
   byId("goal-form").addEventListener("submit", saveGoalForm);
   byId("goal-delete").addEventListener("click", deleteShownGoal);
   byId("money-form").addEventListener("submit", saveMoneyForm);
+  byId("money-source").addEventListener("change", showEntryHint);
   byId("money-delete").addEventListener("click", deleteShownEntry);
   byId("savings-add-btn").addEventListener("click", () => openEntrySheet("deposit", "general", null, null));
   byId("savings-out-btn").addEventListener("click", () => openEntrySheet("withdrawal", "general", null, null));
