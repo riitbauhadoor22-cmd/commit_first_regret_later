@@ -2,6 +2,7 @@
 # demo mode, and sending (always faked: no real email is ever sent).
 import smtplib
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -111,6 +112,69 @@ def test_gmail_not_set_up_gives_clear_error(client, monkeypatch, no_real_smtp): 
     register(client)
     res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
     assert res.status_code == 503 and res.json()["code"] == "EMAIL_FAILED"
+
+
+@pytest.fixture
+def brevo(monkeypatch):
+    """Turns Brevo on and fakes its HTTP call (the real API is never called). Returns the list of sent requests."""
+    monkeypatch.setenv("BREVO_API_KEY", "fake-brevo-key")
+    monkeypatch.setenv("EMAIL_FROM", "codes@pennywise.test")
+    monkeypatch.setenv("EMAIL_FROM_NAME", "")
+    calls = []
+
+    def fake_post(url, json, headers, timeout):
+        calls.append({"url": url, "json": json, "headers": headers, "timeout": timeout})
+        return httpx.Response(201, json={"messageId": "x"})
+    monkeypatch.setattr(email_sender.httpx, "post", fake_post)
+    return calls
+
+
+def test_brevo_used_when_key_is_set(brevo, no_real_smtp):
+    email_sender.send_otp_email("asha@example.com", "123456")
+    assert len(brevo) == 1
+    call = brevo[0]
+    assert call["url"] == "https://api.brevo.com/v3/smtp/email" and call["headers"]["api-key"] == "fake-brevo-key"
+    assert call["timeout"] <= 10
+    assert call["json"]["sender"] == {"email": "codes@pennywise.test", "name": "Pennywise"}
+    assert call["json"]["to"] == [{"email": "asha@example.com"}]
+    assert call["json"]["subject"] == "Your login code: 123456" and "123456" in call["json"]["textContent"]
+
+
+def test_gmail_used_when_brevo_key_is_empty(monkeypatch):
+    monkeypatch.setenv("BREVO_API_KEY", "")
+    monkeypatch.setenv("GMAIL_ADDRESS", "me@gmail.com")
+    monkeypatch.setenv("GMAIL_APP_PASSWORD", "abcd efgh ijkl mnop")
+    monkeypatch.setattr(email_sender.httpx, "post", lambda *a, **k: pytest.fail("Brevo must not be called"))
+    sent = []
+
+    class FakeSmtp:
+        def __init__(self, host, port, timeout):
+            sent.append(host)
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def login(self, user, password):
+            assert password == "abcdefghijklmnop"
+        def send_message(self, message):
+            sent.append(message["Subject"])
+    monkeypatch.setattr(smtplib, "SMTP_SSL", FakeSmtp)
+    email_sender.send_otp_email("asha@example.com", "123456")
+    assert sent == ["smtp.gmail.com", "Your login code: 123456"]
+
+
+@pytest.mark.parametrize("problem", ["error", "timeout"])
+def test_brevo_failure_gives_friendly_503(client, brevo, no_real_smtp, monkeypatch, capsys, problem):
+    def failing_post(url, json, headers, timeout):
+        if problem == "timeout":
+            raise httpx.ReadTimeout("timed out")
+        return httpx.Response(401, json={"message": "Key not found"})
+    monkeypatch.setattr(email_sender.httpx, "post", failing_post)
+    register(client)
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    assert res.status_code == 503 and res.json()["code"] == "EMAIL_FAILED"
+    assert res.json()["detail"] == "We couldn't send the email right now. Please try again in a minute."
+    assert "fake-brevo-key" not in capsys.readouterr().out  # the API key is never logged
 
 
 def test_send_otp_email_raises_when_not_set_up(monkeypatch, no_real_smtp):  # the sender itself explains what's missing

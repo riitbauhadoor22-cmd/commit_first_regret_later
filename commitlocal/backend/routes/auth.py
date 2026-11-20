@@ -77,7 +77,7 @@ def demo_mode_on():
 
 
 def deliver_login_code(user, code):
-    """The ONE place that sends a login code (Gmail, email_sender.py). Couldn't send → 503 EMAIL_FAILED."""
+    """The ONE place that sends a login code (Brevo or Gmail, email_sender.py). Couldn't send → 503 EMAIL_FAILED."""
     try:
         send_otp_email(user.email, code)
     except Exception as error:

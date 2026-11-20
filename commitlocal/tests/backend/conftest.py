@@ -17,6 +17,8 @@ os.environ.update({"GROQ_API_KEY": "test-key", "GROQ_MODEL": "", "AI_DAILY_LIMIT
                    "AI_MAX_OUTPUT_TOKENS": "1000", "AI_MAX_INPUT_CHARS": "6000", "AI_TIMEOUT_SECONDS": "25"})
 # Demo mode off, also set BEFORE backend/.env is read; tests turn it on with monkeypatch
 os.environ["DEMO_SHOW_OTP"] = "false"
+# Brevo off (Gmail path), also set BEFORE backend/.env is read; Brevo tests turn it on with monkeypatch
+os.environ["BREVO_API_KEY"] = ""
 
 import database  # noqa: E402
 import security  # noqa: E402

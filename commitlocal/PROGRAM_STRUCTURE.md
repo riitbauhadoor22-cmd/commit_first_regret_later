@@ -15,6 +15,9 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 ### Logging in
 - Register with a username, an **email** and a strong password (the password meter shows each rule).
 - Log in with email + password, then type a **6-digit code** sent by email. The code lasts 5 minutes.
+- Sending (`email_sender.py`): **Brevo HTTP API** (`POST https://api.brevo.com/v3/smtp/email`, httpx, 10 s timeout,
+  one try) when `BREVO_API_KEY` is set; otherwise **Gmail SMTP** (local development). Same email text either way.
+  Any failure → 503 `EMAIL_FAILED`. The code and the API key are never logged.
 - 3 wrong passwords lock the account; "Send me a login code" unlocks it.
 - Limits stop people guessing codes or flooding inboxes.
 - Login is email only. Phone numbers and WhatsApp codes were removed (migration 0010 deleted phone-only accounts
@@ -135,7 +138,8 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
 ## 6. Settings (`backend/.env`, copy from `.env.example`)
 | Setting | What it does |
 |---|---|
-| `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | send login codes (needed) |
+| `BREVO_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME` | send login codes through Brevo (needed on Render; name empty = Pennywise) |
+| `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | send login codes through Gmail when `BREVO_API_KEY` is empty (local) |
 | `GROQ_API_KEY` (+ `GROQ_MODEL`, `AI_*`) | AI insights (optional) |
 | `GROQ_VISION_MODEL`, `BILL_SCAN_DAILY_LIMIT`, `BILL_SCAN_COOLDOWN_SECONDS` | Scan bill (optional; uses `GROQ_API_KEY`) |
 | `DATABASE_URL` | empty = SQLite; a PostgreSQL link in production |
@@ -155,10 +159,12 @@ uvicorn main:app --reload --port 8000
 Open **http://localhost:8000/login.html** (development on your computer; phones use the Render link below).
 
 **Tests** (from `commitlocal`): `backend\venv\Scripts\python -m pytest tests/backend -q` and `node --test tests/frontend`.
-Groq and Gmail are always faked in tests.
+Groq, Brevo and Gmail are always faked in tests.
 
 ## 8. Deployment (Render + Neon)
-- **Live app:** `https://<name>.onrender.com/login.html` (fixed link, free plan). No tunnel any more.
+- **Live app:** `https://pennywise.onrender.com/login.html` (service name `pennywise` in render.yaml; free plan).
+  Render never changes an existing service's URL: after the rename, create a new service from the Blueprint, copy
+  its secret variables, then delete the old `my-money` service.
 - **Config:** `render.yaml` at the top of the repo (the only copy; Render reads it by default): root
   `commitlocal/backend`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT
   --proxy-headers --forwarded-allow-ips "*"`, health check `/health`, `APP_ENV=production`, auto-deploy on push.
@@ -167,7 +173,9 @@ Groq and Gmail are always faked in tests.
 - **Runtime files in git:** `backend/AI_model/loan_risk_model.pkl` + `_card.json`, `data/cpi_mauritius.csv`. Missing
   → the app still starts (40% rule only / "Inflation data unavailable"). The old 58 MB `loan_amount_model.pkl` is
   not used and stays out of git.
-- **Render variables:** required `DATABASE_URL`, `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`; optional `GROQ_API_KEY`,
+- **Email on Render:** the free plan blocks SMTP ports (25/465/587), so Gmail SMTP fails there. Login codes go
+  through the Brevo HTTP API instead (`BREVO_API_KEY`).
+- **Render variables:** required `DATABASE_URL`, `BREVO_API_KEY`, `EMAIL_FROM`; optional `EMAIL_FROM_NAME`, `GROQ_API_KEY`,
   `GROQ_MODEL`, `GROQ_VISION_MODEL`, `DEMO_SHOW_OTP` (demo only); `APP_ENV` and `PYTHON_VERSION` come from render.yaml.
 - **Before every deploy with a new migration:** Neon → Branches → Create branch (e.g. `backup-before-deploy`).
 - **Free plan:** sleeps after ~15 min idle (first visit ~30–60 s). Open the link a minute before a demo.

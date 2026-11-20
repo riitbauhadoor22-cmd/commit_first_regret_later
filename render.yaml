@@ -6,7 +6,7 @@
 # Back up Neon (Branches → Create branch) before every deploy: migrations run when the app starts.
 services:
   - type: web
-    name: my-money
+    name: pennywise                # → https://pennywise.onrender.com
     runtime: python
     plan: free
     rootDir: commitlocal/backend
@@ -23,9 +23,16 @@ services:
         value: production
       - key: DATABASE_URL          # required: Neon connection string (postgresql://...?sslmode=require)
         sync: false
-      - key: GMAIL_ADDRESS         # required: the Gmail that sends login codes
+      # Login code emails: Render's free plan blocks SMTP ports, so Gmail SMTP can't work here -> Brevo HTTP API
+      - key: BREVO_API_KEY         # required: Brevo API key (app.brevo.com -> SMTP & API -> API keys)
         sync: false
-      - key: GMAIL_APP_PASSWORD    # required: its 16-letter Gmail App Password
+      - key: EMAIL_FROM            # required: sender address, verified in Brevo (Senders & IP)
+        sync: false
+      - key: EMAIL_FROM_NAME       # optional: empty = Pennywise
+        sync: false
+      - key: GMAIL_ADDRESS         # not used on Render (Brevo is used when BREVO_API_KEY is set)
+        sync: false
+      - key: GMAIL_APP_PASSWORD
         sync: false
       - key: GROQ_API_KEY          # optional: AI insights + Scan bill
         sync: false

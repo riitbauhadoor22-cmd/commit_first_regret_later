@@ -1,5 +1,6 @@
 # Files git should ignore
 .env
+.env.example
 venv/
 __pycache__/
 *.db
