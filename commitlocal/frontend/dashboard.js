@@ -157,7 +157,8 @@ function drawBalance(balance) {
     state.hidden = true;
     compare.textContent = t("dash.balance.missing");
   } else {
-    amount.textContent = balance.balance < 0 ? formatOut(balance.balance) : formatMoney(balance.balance);
+    const whole = Math.round(balance.balance); // whole rupees like Left to spend (Rs 15,833, not .34)
+    amount.textContent = whole < 0 ? formatOut(whole) : formatMoney(whole);
     amount.classList.toggle("negative", balance.balance < 0);
     state.hidden = false;
     state.className = "status dash-state " + balance.state;

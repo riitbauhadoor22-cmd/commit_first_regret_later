@@ -141,6 +141,11 @@ function addSavingsEntry(entry) { return callApi("POST", "/api/savings/entries",
 function editSavingsEntry(id, entry) { return callApi("PUT", "/api/savings/entries/" + id, entry); }
 function deleteSavingsEntry(id) { return callApi("DELETE", "/api/savings/entries/" + id); }
 
+// ===== MONTH-END RECAP (last month, shown once) =====
+function getMonthRecap() { return callApi("GET", "/api/month-recap"); }
+function markMonthRecapSeen() { return callApi("POST", "/api/month-recap/seen"); }
+function moveMonthRecapLeftOver() { return callApi("POST", "/api/month-recap/move"); }
+
 function getGoals() { return callApi("GET", "/api/goals"); }
 function addGoal(goal) { return callApi("POST", "/api/goals", goal); }
 function editGoal(id, goal) { return callApi("PUT", "/api/goals/" + id, goal); }

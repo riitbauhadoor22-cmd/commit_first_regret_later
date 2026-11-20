@@ -284,6 +284,7 @@ async function startApp() {
     startSavingsView(); // in savings-view.js (Money → Savings)
     startProfileTab();  // in profile-tab.js
     startDashboard();   // in dashboard.js: the Dashboard is the first page you see after logging in
+    startMonthRecap();  // in month-recap.js: last month's recap, the first time the app opens in a new month
   }
 }
 

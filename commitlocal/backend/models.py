@@ -418,6 +418,7 @@ class Profile(Base):
     date_of_birth = mapped_column(sa.Date, nullable=True)
     language = mapped_column(sa.String(3), nullable=True)  # en / fr / mfe, null = never chosen
     occupation = mapped_column(sa.String(60), nullable=True)  # optional (Profile tab), null = not added
+    recap_seen_month = mapped_column(sa.String(7), nullable=True)  # YYYY-MM of the last month-end recap seen (0014)
     updated_at = mapped_column(sa.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
     __table_args__ = (sa.CheckConstraint("language IS NULL OR language IN ('en', 'fr', 'mfe')",
                                          name="language_allowed"),)

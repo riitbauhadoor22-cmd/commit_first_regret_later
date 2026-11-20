@@ -240,7 +240,7 @@
       <div class="stats">
         <div class="stat"><p class="label" data-i18n="money.in">In</p><p id="sum-in" class="value in"></p></div>
         <div class="stat"><p class="label" data-i18n="money.out">Out</p><p id="sum-out" class="value out"></p></div>
-        <div class="stat"><p class="label" data-i18n="money.saved">Saved</p><p id="sum-saved" class="value saved"></p></div>
+        <div class="stat"><p class="label" data-i18n="money.savedThisMonth">Saved this month</p><p id="sum-saved" class="value saved"></p></div>
       </div>
       <div id="savings-status" class="savings-status" aria-live="polite"></div> <!-- encouraging savings message -->
       <div id="split-bar" class="split-bar" aria-hidden="true">
@@ -1079,6 +1079,25 @@
     </div>
   </div>
 
+  <!-- Month-end recap of last month (month-recap.js): shown once, the first time the app opens in a new month -->
+  <div id="sheet-recap" class="sheet sheet-center" role="dialog" aria-modal="true" aria-labelledby="recap-title" aria-describedby="recap-status" hidden>
+    <div class="sheet-box dialog-box stack">
+      <h2 id="recap-title"></h2>
+      <p id="recap-status" class="muted"></p>
+      <dl class="recap-grid">
+        <div class="wide"><dt data-i18n="recap.saved">Saved last month</dt><dd id="recap-saved"></dd></div>
+        <div><dt data-i18n="recap.total">Total savings now</dt><dd id="recap-total"></dd></div>
+        <div id="recap-left-row"><dt data-i18n="recap.left">Money left over</dt><dd id="recap-left"></dd></div>
+      </dl>
+      <p id="recap-move-text" hidden></p>
+      <p id="recap-error" class="message error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="recap-later" class="btn btn-light" type="button" data-close data-i18n="recap.notNow">Not now</button>
+        <button id="recap-yes" class="btn" type="button" data-i18n="recap.yes" hidden>Yes, move it</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Delete account? (profile-tab.js): needs the password, Cancel is focused first -->
   <div id="sheet-delete-account" class="sheet sheet-center" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-text" hidden>
     <form id="delete-account-form" class="sheet-box dialog-box" novalidate>
@@ -1164,5 +1183,6 @@
   <script src="dashboard.js"></script> <!-- needs drawLoanChart (loans-tab.js), JarCalc, STATUS_KEYS -->
   <script src="profile-tab.js"></script> <!-- Profile: account, weekly budget + badges, settings -->
   <script src="budget-plan.js"></script> <!-- My budget plan card + its pop-ups (Money tab) -->
+  <script src="month-recap.js"></script> <!-- month-end recap pop-up (needs reloadAfterSaving, loadDashboard) -->
 </body>
 </html>

@@ -25,7 +25,8 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 
 ### Money tab
 - **Month picker** at the top.
-- **Summary card**: Left to spend, In, Out, **Saved** (real money put into savings − taken out this month), an
+- **Summary card**: Left to spend (whole rupees), In, Out, **Saved this month** (real money put into savings − taken
+  out this month), an
   **encouraging savings message**, and a Needs / Wants / Savings bar that aims at the user's budget style.
 - **Money out**: add expenses (one-off, weekly or monthly), Quick add buttons, **📷 Scan bill** (fills the form from
   a photo), a budget per category, fixed bills, latest expenses. The app guesses the category from the note.
@@ -71,6 +72,15 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 - **Month results are worked out when viewed** (like every summary number, never stored), each against the style
   active in that month (from the plan history). Expenses logged late still count. Streak = months on plan in a row.
 
+### Month-end recap (`month-recap.js`, `routes/month_recap.py`)
+- The first time the app opens in a new month, a pop-up about **last month**: saved vs the monthly target, total
+  savings now, money left over (no income → no left-over line). Encouraging wording only (`recap.status.*`).
+- Left over ≥ Rs 1 → "You have Rs X left over. Move it to savings?" [Yes, move it] [Not now]. Yes = a normal
+  savings entry (general, from that month's income) dated the **last day of last month**, so it counts as last
+  month's saving. X (whole rupees) is worked out again on the server, never sent by the browser.
+- Shown once per month: `profiles.recap_seen_month` (migration 0014) is set as soon as it appears. Only shown if
+  something was recorded by then. The numbers are worked out from the data (shared month maths), never stored.
+
 ### 📷 Scan bill
 - In Add expense: a file picker (`accept="image/*" capture="environment"`, no permission pop-up).
 - The phone shrinks the photo; the backend checks it (JPG / PNG / WebP by its bytes, max 5 MB) and asks a Groq vision
@@ -83,6 +93,7 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 - Saving rate = saved this month ÷ income, capped at 100% (chart axis max 100%). Saved more than income →
   "You put away more than you earned this month…". Income 0 → 0% (or 100% + that message if something was saved).
   Label: "This month: saved Rs X of Rs Y income (Z%)".
+- "Available this month" is shown in whole rupees (like Left to spend).
 - Tiles: money available this month, monthly spending (6 months), saving rate (real saving ÷ income), loan payoff,
   monthly recap, money habits score (0–100, not a credit score), savings jars (one per goal). Plain maths, never AI.
 
@@ -110,6 +121,7 @@ commitlocal/
 │   ├── app.js                shared helpers (tabs, pop-ups, money)   api.js         every backend call
 │   ├── money-tab.js          Money tab (+ Scan bill, savings message) savings-view.js Savings + entries
 │   ├── budget-plan.js        My budget plan                         insights.js    Financial insights
+│   ├── month-recap.js        month-end recap pop-up (last month, shown once)
 │   ├── dashboard.js          Dashboard     loans-tab.js  Loans      profile-tab.js Profile
 │   ├── arcade-tab.js         Budget Challenge                       i18n.js + lang/ en, fr, mfe texts
 │   └── service-worker.js     offline copy (bump CACHE_NAME after frontend changes)
@@ -122,7 +134,7 @@ commitlocal/
 │   ├── services/             month_summary (shared month maths), budget_plan, bill_scan, ai_insights,
 │   │                         dashboard, forecast, financial_analysis, inflation
 │   ├── game/                 Budget Challenge rules
-│   └── migrations/versions/  database changes 0001–0013
+│   └── migrations/versions/  database changes 0001–0014
 └── tests/                    backend (pytest) and frontend (node --test)
 ```
 **Rule:** the maths and every rule live in the backend; the frontend only shows the result.
@@ -137,7 +149,8 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
   scans, month = "bill-scan"), plan_history.
 - Deleting a user deletes all their rows. The database updates itself (migrations) when the app starts.
 - Recent migrations: 0010 phone removal · 0011 plan_history + expenses.weekly · 0012 savings entries (kind, place;
-  drops an old plan_results table if a draft created it) · 0013 deposits.source (income / already_had).
+  drops an old plan_results table if a draft created it) · 0013 deposits.source (income / already_had) ·
+  0014 profiles.recap_seen_month.
 
 ## 5. API
 | Area | Routes |
@@ -147,6 +160,7 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
 | Money | GET /api/summary · GET/POST /api/income, PUT/DELETE /api/income/{id} · GET/POST /api/expenses, PUT/DELETE /api/expenses/{id} · GET/POST /api/expenses/quick · GET /api/expenses/suggest-category, /category-keywords · POST /api/expenses/scan-bill · GET/PUT /api/budgets |
 | Savings | GET/PUT /api/savings · GET/POST /api/savings/entries, PUT/DELETE /api/savings/entries/{id} · POST /api/savings/safety-net/add-money · GET/POST /api/goals, PUT/DELETE /api/goals/{id}, POST /api/goals/{id}/add-money, GET /api/goals/{id}/inflation-projection · GET /api/inflation/projection |
 | Plan | GET /api/plan · POST /api/plan/start/preview, /start, /change · GET /api/plan/preview · DELETE /api/plan/pending |
+| Recap | GET /api/month-recap · POST /api/month-recap/seen, /move |
 | Other | GET /api/dashboard, PUT /api/dashboard/weekly-budget · GET /api/forecast · GET /api/info-status, PUT /api/info-choices · GET /api/insights, POST /api/insights/quick, /generate · POST /api/loans/predict · GET/POST /api/my-loans, PUT/DELETE /api/my-loans/{id} · GET /api/game/levels, GET/POST /api/game/attempts, POST /api/game/attempts/{id}/submit |
 
 ## 6. Settings (`backend/.env`, copy from `.env.example`)
@@ -183,7 +197,7 @@ Groq, Brevo and Gmail are always faked in tests.
   `commitlocal/backend`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT
   --proxy-headers --forwarded-allow-ips "*"`, health check `/health`, `APP_ENV=production`, auto-deploy on push.
 - **Same address for app + API:** FastAPI serves `frontend/` (`main.py` mounts it last), so no CORS.
-- **Database:** Neon PostgreSQL (`DATABASE_URL`). Alembic migrations (0001–0013) run at every start.
+- **Database:** Neon PostgreSQL (`DATABASE_URL`). Alembic migrations (0001–0014) run at every start.
 - **Runtime files in git:** `backend/AI_model/loan_risk_model.pkl` + `_card.json`, `data/cpi_mauritius.csv`. Missing
   → the app still starts (40% rule only / "Inflation data unavailable"). The old 58 MB `loan_amount_model.pkl` is
   not used and stays out of git.
