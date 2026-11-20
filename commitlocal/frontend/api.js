@@ -66,6 +66,10 @@ function changeMyPassword(current, newPassword, confirm) {
   return callApi("PUT", "/api/profile/password",
     { current_password: current, new_password: newPassword, confirm_password: confirm });
 }
+// Deletes the account and all its data (needs the current password); the server also clears the cookie
+function deleteMyAccount(currentPassword) {
+  return callApi("DELETE", "/api/profile", { current_password: currentPassword });
+}
 
 // ===== MONEY TAB =====
 function getSummary(month) { return callApi("GET", "/api/summary?month=" + month); }

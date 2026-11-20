@@ -601,6 +601,7 @@
           <button id="share-loans-add" class="link-btn" type="button" data-i18n="profile.addIt" hidden>Add it</button>
         </li>
       </ul>
+      <button id="delete-account" class="btn btn-small btn-danger" type="button" data-i18n="profile.deleteAccount">Delete account</button>
     </section>
 
     <!-- b) Weekly budget + badges (moved from the Dashboard; same GET /api/dashboard, badges are never removed) -->
@@ -1070,6 +1071,22 @@
         <button id="logout-confirm" class="btn btn-danger" type="button" data-i18n="nav.logOut">Log out</button>
       </div>
     </div>
+  </div>
+
+  <!-- Delete account? (profile-tab.js): needs the password, Cancel is focused first -->
+  <div id="sheet-delete-account" class="sheet sheet-center" role="alertdialog" aria-modal="true" aria-labelledby="delete-account-title" aria-describedby="delete-account-text" hidden>
+    <form id="delete-account-form" class="sheet-box dialog-box" novalidate>
+      <h2 id="delete-account-title" data-i18n="profile.deleteTitle">Delete your account?</h2>
+      <p id="delete-account-text" class="muted" data-i18n="profile.deleteText">This deletes your account and all your money details for good. It can't be undone. Type your password to confirm.</p>
+      <label><span data-i18n="profile.currentPassword">Current password</span>
+        <span class="password-wrap"><input id="delete-account-password" type="password" autocomplete="current-password" maxlength="200">
+          <button class="password-toggle" type="button" data-show-for="delete-account-password" aria-label="Show password" data-i18n-aria="login.showPassword" data-i18n="login.show">Show</button></span></label>
+      <p id="delete-account-error" class="message error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="delete-account-cancel" class="btn btn-light" type="button" data-close data-i18n="common.cancel">Cancel</button>
+        <button id="delete-account-confirm" class="btn btn-danger" type="submit" data-i18n="profile.deleteConfirm">Delete for good</button>
+      </div>
+    </form>
   </div>
 
   <!-- ===================== POP-UPS: BUDGET PLAN (budget-plan.js) ===================== -->

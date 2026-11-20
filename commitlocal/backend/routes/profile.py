@@ -7,17 +7,19 @@
 #   PUT /api/profile/occupation  → {occupation}                    free text up to 60 characters or empty (= remove)
 #   PUT /api/profile/password    → {current_password, new_password, confirm_password}  same rules as registration;
 #                                  other logged-in devices are logged out, this one stays logged in
+#   DELETE /api/profile          → {current_password}              deletes the account and ALL its data (database
+#                                  CASCADE), logs out every device and clears the cookie. Cannot be undone.
 import uuid
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from database import open_db
 from errors import AppError
-from models import (ChangeEmailForm, ChangePasswordForm, LoginSession, NameForm, OccupationForm, Profile,
-                    User, UsernameForm)
-from routes.auth import COOKIE_NAME, find_user, find_user_by_username, require_user
+from models import (ChangeEmailForm, ChangePasswordForm, DeleteAccountForm, LoginSession, NameForm, OccupationForm,
+                    Profile, User, UsernameForm)
+from routes.auth import COOKIE_NAME, cookie_is_secure, find_user, find_user_by_username, require_user
 from security import get_password_problems, hash_password, hash_text, password_matches
 
 router = APIRouter(prefix="/api/profile")
@@ -123,3 +125,15 @@ def change_password(form: ChangePasswordForm, request: Request, user_id: uuid.UU
         db.execute(delete(LoginSession).where(LoginSession.user_id == user.id,
                                               LoginSession.token_hash != this_session))
     return {"message": "Password changed.", "code": "PASSWORD_CHANGED"}
+
+
+@router.delete("")
+def delete_account(form: DeleteAccountForm, request: Request, response: Response,
+                   user_id: uuid.UUID = Depends(require_user)):
+    with open_db() as db:
+        user = db.get(User, user_id)
+        require_current_password(user, form.current_password)
+        # Every row that belongs to the user (sessions, codes, money, savings, loans, ...) goes with it (CASCADE)
+        db.execute(delete(User).where(User.id == user_id))
+    response.delete_cookie(COOKIE_NAME, httponly=True, samesite="lax", secure=cookie_is_secure(request))
+    return {"message": "Account deleted.", "code": "ACCOUNT_DELETED"}

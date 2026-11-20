@@ -81,6 +81,8 @@ There are **4 tabs**: **Money**, **Dashboard** (opens first), **Loans**, **Profi
 
 ### Profile tab
 - Account (username, email, occupation, password), weekly budget + badges, **Budget Challenge** game.
+- **Delete account** (bottom of the account card): asks for the password, then deletes the account and ALL its
+  data (database CASCADE), logs out every device and opens the login page. Cannot be undone.
 
 ### Settings (gear icon on every page)
 - Theme, language, log out.
@@ -129,7 +131,7 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
 | Area | Routes |
 |---|---|
 | Auth | POST /api/auth/register, /login, /resend-code, /send-login-code, /verify-code, /logout · GET /api/auth/me · PUT /api/auth/language |
-| Profile | GET /api/profile · PUT /api/profile/name, /username, /email, /occupation, /password |
+| Profile | GET /api/profile · PUT /api/profile/name, /username, /email, /occupation, /password · DELETE /api/profile (password) |
 | Money | GET /api/summary · GET/POST /api/income, PUT/DELETE /api/income/{id} · GET/POST /api/expenses, PUT/DELETE /api/expenses/{id} · GET/POST /api/expenses/quick · GET /api/expenses/suggest-category, /category-keywords · POST /api/expenses/scan-bill · GET/PUT /api/budgets |
 | Savings | GET/PUT /api/savings · GET/POST /api/savings/entries, PUT/DELETE /api/savings/entries/{id} · POST /api/savings/safety-net/add-money · GET/POST /api/goals, PUT/DELETE /api/goals/{id}, POST /api/goals/{id}/add-money, GET /api/goals/{id}/inflation-projection · GET /api/inflation/projection |
 | Plan | GET /api/plan · POST /api/plan/start/preview, /start, /change · GET /api/plan/preview · DELETE /api/plan/pending |
@@ -138,7 +140,7 @@ All month numbers (In, Out, Saved, Left, split, forecast) come from `services/mo
 ## 6. Settings (`backend/.env`, copy from `.env.example`)
 | Setting | What it does |
 |---|---|
-| `BREVO_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME` | send login codes through Brevo (needed on Render; name empty = Pennywise) |
+| `BREVO_API_KEY`, `EMAIL_FROM`, `EMAIL_FROM_NAME` | send login codes through Brevo (needed on Render; name empty = Pennyworth) |
 | `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD` | send login codes through Gmail when `BREVO_API_KEY` is empty (local) |
 | `GROQ_API_KEY` (+ `GROQ_MODEL`, `AI_*`) | AI insights (optional) |
 | `GROQ_VISION_MODEL`, `BILL_SCAN_DAILY_LIMIT`, `BILL_SCAN_COOLDOWN_SECONDS` | Scan bill (optional; uses `GROQ_API_KEY`) |
@@ -162,7 +164,7 @@ Open **http://localhost:8000/login.html** (development on your computer; phones 
 Groq, Brevo and Gmail are always faked in tests.
 
 ## 8. Deployment (Render + Neon)
-- **Live app:** `https://pennywise.onrender.com/login.html` (service name `pennywise` in render.yaml; free plan).
+- **Live app:** `https://pennyworth.onrender.com/login.html` (service name `pennyworth` in render.yaml; free plan).
   Render never changes an existing service's URL: after the rename, create a new service from the Blueprint, copy
   its secret variables, then delete the old `my-money` service.
 - **Config:** `render.yaml` at the top of the repo (the only copy; Render reads it by default): root

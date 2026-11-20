@@ -282,6 +282,10 @@ class UsernameForm(BaseModel):
         return clean_username(value)
 
 
+class DeleteAccountForm(BaseModel):
+    current_password: str = Field(max_length=200)  # needed to delete the account (security)
+
+
 class ChangeEmailForm(BaseModel):
     email: str = Field(max_length=254)
     current_password: str = Field(max_length=200)  # needed to change the email (security)

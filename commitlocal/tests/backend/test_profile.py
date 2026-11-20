@@ -6,7 +6,7 @@ from sqlalchemy import select
 
 import database
 from conftest import PASSWORD, log_in, username_for
-from models import LoginSession, User
+from models import Expense, LoginSession, User
 
 NEW_PASSWORD = "Newer!Pass2"
 
@@ -248,3 +248,40 @@ def test_migration_0010_deletes_phone_only_accounts_and_the_phone_column(tmp_pat
             assert connection.execute(sa.text(f"SELECT COUNT(*) FROM {table}")).scalar() == 1
         assert "phone" not in {c["name"] for c in sa.inspect(connection).get_columns("profiles")}
     database.engine.dispose()
+
+
+# ===== DELETE ACCOUNT =====
+def delete_account(client, password=PASSWORD):
+    return client.request("DELETE", "/api/profile", json={"current_password": password})
+
+
+def test_delete_account_needs_the_right_password(two_users):  # wrong password -> 400, nothing deleted
+    asha, _ = two_users
+    res = delete_account(asha, "Wrong!Pass9")
+    assert res.status_code == 400 and res.json()["code"] == "WRONG_PASSWORD"
+    assert profile(asha)["email"] == "asha@example.com"
+
+
+def test_delete_account_removes_everything_and_logs_out(two_users):  # only the owner's rows go; Bob is untouched
+    asha, bob = two_users
+    asha.post("/api/expenses", json={"amount": 100, "category": "Groceries"})
+    bob.post("/api/expenses", json={"amount": 50, "category": "Groceries"})
+    res = delete_account(asha)
+    assert res.status_code == 200 and res.json()["code"] == "ACCOUNT_DELETED"
+    assert asha.get("/api/profile").status_code == 401  # cookie cleared and session gone
+    with database.open_db() as db:
+        assert db.scalars(select(User.email)).all() == ["bob@example.com"]
+        assert len(db.scalars(select(Expense)).all()) == 1
+        assert {s.user_id for s in db.scalars(select(LoginSession))} == {db.scalar(select(User.id))}
+    assert profile(bob)["email"] == "bob@example.com"
+    assert log_in_fails(asha)
+
+
+def log_in_fails(client):
+    res = client.post("/api/auth/login", json={"email": "asha@example.com", "password": PASSWORD})
+    return res.status_code in (400, 401)
+
+
+def test_delete_account_needs_login(client):
+    assert delete_account(client).status_code == 401
+

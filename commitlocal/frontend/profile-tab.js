@@ -1,5 +1,6 @@
 // profile-tab.js — the Profile tab (it was the Arcade tab):
-//   a) My account: name, username, email, occupation, password (GET /api/profile + PUT /api/profile/...).
+//   a) My account: name, username, email, occupation, password (GET /api/profile + PUT /api/profile/...),
+//      delete account (DELETE /api/profile).
 //      A value on screen only changes after the server said OK; then everything is read again from the server.
 //      Also two read-only lines: is Money in / are Loans shared? (GET /api/info-status)
 //   b) Weekly budget + badges (moved from the Dashboard; same GET /api/dashboard, badges are awarded there).
@@ -201,6 +202,32 @@ async function savePasswordForm(event) {
   }
 }
 
+// ===== DELETE ACCOUNT (pop-up) =====
+function openDeleteAccountSheet() {
+  byId("delete-account-form").reset();
+  byId("delete-account-error").textContent = "";
+  openSheet("sheet-delete-account");
+  byId("delete-account-cancel").focus();
+}
+
+// The server deletes everything and clears the cookie, then the login page opens
+async function deleteAccountForm(event) {
+  event.preventDefault();
+  const password = byId("delete-account-password").value;
+  if (!password) return showFormError("delete-account-error", t("profile.needPassword"));
+  const button = byId("delete-account-confirm");
+  button.disabled = true;
+  setText(button, "profile.deleteBusy");
+  try {
+    await deleteMyAccount(password);
+    window.location.href = "login.html";
+  } catch (error) {
+    showFormError("delete-account-error", error.message);
+    button.disabled = false;
+    setText(button, "profile.deleteConfirm");
+  }
+}
+
 // Show / Hide buttons next to password boxes: each one only changes ITS input
 function setUpPasswordToggles() {
   document.querySelectorAll("[data-show-for]").forEach((button) => {
@@ -375,6 +402,8 @@ function startProfileTab() {
   byId("edit-password").addEventListener("click", openPasswordSheet);
   byId("password-form").addEventListener("submit", savePasswordForm);
   byId("pw-new").addEventListener("input", updateNewPasswordRules);
+  byId("delete-account").addEventListener("click", openDeleteAccountSheet);
+  byId("delete-account-form").addEventListener("submit", deleteAccountForm);
   setUpPasswordToggles();
   byId("share-income-add").addEventListener("click", () => {
     openPage("money");
